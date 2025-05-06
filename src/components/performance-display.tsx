@@ -74,10 +74,10 @@ const fetchAgentStatus = async (): Promise<AgentStatus> => {
     // Placeholder/Mock Implementation
     console.warn(`${operation} using MOCK data. Requires backend.`);
     await new Promise(res => setTimeout(res, 300));
-    // Simulate potential error during mock fetch
-    if (Math.random() < 0.05) { // 5% chance of simulated backend error
-        throw new ApiError("Simulated backend error fetching agent status.");
-    }
+    // Removed simulated error throw
+    // if (Math.random() < 0.05) { // 5% chance of simulated backend error
+    //     throw new ApiError("Simulated backend error fetching agent status.");
+    // }
     const isEnabled = Math.random() > 0.3;
     const mode = isEnabled ? (Math.random() > 0.5 ? 'full' : 'strategy') : 'unknown';
     return {

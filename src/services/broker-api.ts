@@ -812,10 +812,10 @@ export async function getPositions(): Promise<Position[]> {
     simulateError('Failed to fetch portfolio positions.');
 
      if (!USE_MOCK_API) {
-        console.log(`Attempting REAL BROKER API call for ${operation}`);
+        console.log('Attempting REAL BROKER API call for getPositions');
          if (!REAL_BROKER_API_ENDPOINT || !REAL_BROKER_API_KEY || !REAL_BROKER_SECRET_KEY) {
-            console.error(`${operation}: Real Broker API credentials or endpoint not configured.`);
-            throw new BrokerConnectionError("Broker API not configured for getPositions.");
+            console.error("Real Broker API endpoint, key, or secret not configured in .env");
+            throw new BrokerConnectionError("Broker API not configured for getPositions."); // Throw specific error
         }
         try {
              const response = await fetch(`${REAL_BROKER_API_ENDPOINT}/v2/positions`, {
@@ -956,7 +956,7 @@ export async function getAccountBalance(): Promise<AccountBalance> {
         throw new ApiError("Backend API endpoint not configured. Cannot process deposits.");
     }
 
-    if (!USE_MOCK_API) {
+    // if (!USE_MOCK_API) { // Always call backend for deposits regardless of mock setting for other APIs
         console.log(`Attempting REAL backend call for ${operation}`);
         try {
             const response = await fetch(`${NEXT_PUBLIC_BACKEND_API_ENDPOINT}/deposit`, {
@@ -989,22 +989,22 @@ export async function getAccountBalance(): Promise<AccountBalance> {
             if (error instanceof ApiError || error instanceof ValidationError) throw error;
             throw new ApiError(`Failed to initiate deposit: ${error.message}`, error);
         }
-    } else {
-        console.warn(`${operation}: Using MOCK backend response.`);
-        await new Promise(resolve => setTimeout(resolve, 700));
-         const randomStatus = Math.random();
-         let status: TransactionStatus['status'] = 'pending';
-         let message = 'Deposit request received by mock backend.';
-         if (randomStatus < 0.1) { status = 'failed'; message = 'Mock backend simulated payment failure.'; }
-         else if (randomStatus < 0.3) { status = 'requires_action'; message = 'Mock backend requires additional verification.'; }
+    // } else {
+    //     console.warn(`${operation}: Using MOCK backend response.`);
+    //     await new Promise(resolve => setTimeout(resolve, 700));
+    //      const randomStatus = Math.random();
+    //      let status: TransactionStatus['status'] = 'pending';
+    //      let message = 'Deposit request received by mock backend.';
+    //      if (randomStatus < 0.1) { status = 'failed'; message = 'Mock backend simulated payment failure.'; }
+    //      else if (randomStatus < 0.3) { status = 'requires_action'; message = 'Mock backend requires additional verification.'; }
 
-         return {
-            transactionId: `mock_dep_${Date.now()}`,
-            status: status,
-            message: message,
-            timestamp: new Date(),
-         };
-    }
+    //      return {
+    //         transactionId: `mock_dep_${Date.now()}`,
+    //         status: status,
+    //         message: message,
+    //         timestamp: new Date(),
+    //      };
+    // }
 }
 
 /**
