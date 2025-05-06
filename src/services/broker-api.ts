@@ -123,9 +123,9 @@ export interface Position {
  */
 export interface DepositDetails {
     amount: number;
-    method: 'card' | 'crypto' | 'bank_transfer'; // Example methods
+    method: 'card' | 'crypto' | 'bank_transfer' | 'nequi' | 'daviplata' | 'paypal'; // Added new methods
     currency: string; // e.g., 'USD'
-    // Add other relevant details like card info hash, crypto address, payment processor token, etc.
+    // Add other relevant details like card info hash, crypto address, payment processor token, Nequi phone number, etc.
 }
 
 /**
@@ -729,12 +729,6 @@ export async function initiateWithdraw(details: WithdrawDetails): Promise<Transa
      //     timestamp: new Date(),
      // };
 }
-
-
-// --- Mock Data Generation Functions (Removed) ---
-// Mock data generation functions (generateMockMarketData, generateMockHistoricalData, etc.)
-// and helper functions (simulateDelay, simulateError, getBasePriceForTicker, getMockInstruments, getMockPositions)
-// have been removed as this file now represents the structure for real API calls.
 
 
 // --- Potential Future Additions ---
