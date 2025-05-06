@@ -18,6 +18,10 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+   env: {
+    // Expose the variable to the browser
+    NEXT_PUBLIC_USE_MOCK_API: process.env.NEXT_PUBLIC_USE_MOCK_API,
+  },
 };
 
 export default nextConfig;
