@@ -19,21 +19,17 @@ import {
 } from "@/components/ui/table"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
-import { getPositions, type Position, getMarketData, type MarketData, getHistoricalData } from '@/services/broker-api';
+import { getPositions, type Position, getMarketData, type MarketData, getHistoricalData } from '@/services/broker-api'; // APIs are now real placeholders
 import { Skeleton } from '@/components/ui/skeleton';
-import { TrendingUp, TrendingDown, Minus, Info, AlertTriangle, LineChart } from 'lucide-react'; // Added LineChart
+import { TrendingUp, TrendingDown, Minus, Info, AlertTriangle, LineChart } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert" // Added Alert
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
-
-// Calculate overall portfolio historical data (more complex, requires individual asset history and weights)
-// For simplicity, we'll chart a single representative asset for now, e.g., VOO if held, or the largest holding.
-// Or, we could calculate total portfolio value at each historical point (requires fetching historical for all positions)
 
 const chartConfig = {
   value: {
-    label: "Value", // Changed from "Portfolio Value" as it might represent a single asset
+    label: "Value",
     color: "hsl(var(--primary))",
   },
 } satisfies React.ComponentProps<typeof ChartContainer>["config"];
@@ -45,11 +41,11 @@ export default function PortfolioOverview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null); // General error for positions/market data
   const [chartData, setChartData] = useState<{ date: string; value: number }[]>([]);
-  const [chartRange, setChartRange] = useState<string>('1m'); // Default to 1 month
-  const [chartTicker, setChartTicker] = useState<string | null>(null); // Ticker being charted
+  const [chartRange, setChartRange] = useState<string>('1m');
+  const [chartTicker, setChartTicker] = useState<string | null>(null);
   const [loadingChart, setLoadingChart] = useState(false);
-  const [chartError, setChartError] = useState<string | null>(null); // Specific error for chart data
-  const [partialDataWarning, setPartialDataWarning] = useState<string | null>(null); // Specific warning for partial market data
+  const [chartError, setChartError] = useState<string | null>(null);
+  const [partialDataWarning, setPartialDataWarning] = useState<string | null>(null);
 
 
    const formatCurrency = useCallback((value: number | undefined) => {
@@ -59,8 +55,7 @@ export default function PortfolioOverview() {
 
   // Memoize portfolio calculations
    const { portfolioValue, totalInvested, totalGainLoss, totalGainLossPercent } = useMemo(() => {
-    // Ensure positions and marketDataMap are not null/empty before calculating
-    if (!positions || positions.length === 0) { // Market data check removed here, handled below
+    if (!positions || positions.length === 0) {
       return { portfolioValue: 0, totalInvested: 0, totalGainLoss: 0, totalGainLossPercent: 0 };
     }
 
@@ -69,18 +64,15 @@ export default function PortfolioOverview() {
 
     positions.forEach((position) => {
       const currentPrice = marketDataMap[position.ticker]?.price;
-       // Only include positions where we have a valid current price
       if (typeof currentPrice === 'number' && currentPrice >= 0) {
           currentTotalValue += position.quantity * currentPrice;
           investedTotal += position.quantity * position.averagePrice;
       } else {
          console.warn(`Missing or invalid market price for ${position.ticker} in portfolio calculation.`);
-         // Still count the invested amount even if current price is missing
          investedTotal += position.quantity * position.averagePrice;
       }
     });
 
-    // Avoid division by zero if totalInvested is 0 or negative (unlikely but possible)
     const gainLoss = currentTotalValue - investedTotal;
     const gainLossPercent = investedTotal > 0 ? (gainLoss / investedTotal) * 100 : 0;
 
@@ -95,14 +87,14 @@ export default function PortfolioOverview() {
 
   // Determine which ticker to chart initially
   useEffect(() => {
-    // Only set chart ticker if positions and market data are loaded successfully
-    if (positions && positions.length > 0 && Object.keys(marketDataMap).length > 0 && !chartTicker) {
+    // Only set chart ticker if positions and market data are loaded successfully and no error occurred
+    if (positions && positions.length > 0 && Object.keys(marketDataMap).length > 0 && !chartTicker && !error) {
       const vooPosition = positions.find(p => p.ticker === 'VOO');
       if (vooPosition) {
         setChartTicker('VOO');
       } else {
-        let largestTicker = positions[0].ticker;
-        let largestValue = -Infinity; // Use -Infinity to handle potential negative values correctly
+        let largestTicker = null;
+        let largestValue = -Infinity;
         positions.forEach(pos => {
            const currentPrice = marketDataMap[pos.ticker]?.price;
            if (typeof currentPrice === 'number' && currentPrice >= 0) {
@@ -113,36 +105,41 @@ export default function PortfolioOverview() {
                 }
            }
         });
-         if (largestValue > -Infinity) { // Ensure we found at least one valid position
+         if (largestTicker) {
              setChartTicker(largestTicker);
          } else {
-              console.warn("Could not determine largest holding for initial chart.");
+              console.warn("Could not determine largest holding for initial chart (possibly due to missing market data).");
+              // Maybe set to the first available ticker as a fallback?
+              if (positions.length > 0 && marketDataMap[positions[0].ticker]) {
+                  setChartTicker(positions[0].ticker);
+              }
          }
       }
+    } else if (error && !loading) {
+        // If there was an error loading positions/market data, don't attempt to set a chart ticker
+        setChartTicker(null);
     }
-  }, [positions, marketDataMap, chartTicker]); // Added chartTicker dependency to prevent re-running if already set
+  }, [positions, marketDataMap, chartTicker, error, loading]);
 
-  // Fetch initial positions and market data
+  // Fetch initial positions and market data - Attempts real API calls
   useEffect(() => {
     const fetchInitialData = async () => {
       setLoading(true);
       setError(null);
-      setPartialDataWarning(null); // Clear previous warning
-      setMarketDataMap({}); // Clear previous data
-      setPositions(null);   // Clear previous data
+      setPartialDataWarning(null);
+      setMarketDataMap({});
+      setPositions(null);
       try {
+        // getPositions will throw if not implemented/configured
         const fetchedPositions = await getPositions();
         setPositions(fetchedPositions);
 
         if (fetchedPositions && fetchedPositions.length > 0) {
-             // Fetch market data concurrently for all positions
              let successfulFetches = 0;
              const marketDataPromises = fetchedPositions.map(p =>
+                // getMarketData will throw if not implemented/configured
                 getMarketData(p.ticker)
-                    .then(data => {
-                        successfulFetches++;
-                        return data;
-                    })
+                    .then(data => { successfulFetches++; return data; })
                     .catch(err => {
                         console.error(`Failed to fetch market data for ${p.ticker}:`, err);
                         return null; // Return null on individual fetch error
@@ -152,26 +149,25 @@ export default function PortfolioOverview() {
 
             const dataMap: Record<string, MarketData> = {};
             marketDataResults.forEach(md => {
-              // Only add valid market data to the map
               if (md && md.ticker && typeof md.price === 'number') {
                  dataMap[md.ticker] = md;
               }
             });
             setMarketDataMap(dataMap);
-             // Check if any market data fetch failed
+
              if (successfulFetches < fetchedPositions.length) {
                  const failedCount = fetchedPositions.length - successfulFetches;
-                 setPartialDataWarning(`Could not load market data for ${failedCount} position(s). Portfolio value may be incomplete.`);
+                 setPartialDataWarning(`Could not load market data for ${failedCount} position(s). Portfolio value may be incomplete. Check API implementation/configuration.`);
              }
 
         } else {
-            setMarketDataMap({}); // No positions, empty map
-            setPositions([]); // Set to empty array if no positions
+            setMarketDataMap({});
+            setPositions([]); // Set to empty array if no positions returned
         }
 
       } catch (err: any) {
         console.error("Failed to fetch portfolio data:", err);
-        setError(`Failed to load portfolio data: ${err.message || 'Please try again later.'}`);
+        setError(`Failed to load portfolio data: ${err.message || 'Check API implementation/configuration.'}`);
          setPositions([]); // Set empty array on error
          setMarketDataMap({}); // Clear map on error
       } finally {
@@ -182,34 +178,33 @@ export default function PortfolioOverview() {
     fetchInitialData();
   }, []); // Re-fetch when component mounts
 
-   // Fetch historical chart data when ticker or range changes
+   // Fetch historical chart data when ticker or range changes - Attempts real API calls
    useEffect(() => {
-    if (!chartTicker) return; // Don't fetch if no ticker is selected
+    if (!chartTicker || error) return; // Don't fetch if no ticker or if there was a general error
 
     const fetchChartData = async () => {
       setLoadingChart(true);
-      setChartError(null); // Clear previous chart errors
-      setChartData([]);    // Clear previous chart data
+      setChartError(null);
+      setChartData([]);
       try {
-        console.log(`Fetching chart data for: ${chartTicker}, range: ${chartRange}`); // Debug log
+        console.log(`Fetching chart data for: ${chartTicker}, range: ${chartRange}`);
+        // getHistoricalData will throw if not implemented/configured
         const history = await getHistoricalData(chartTicker, chartRange);
-        // Basic validation on fetched data
          if (!Array.isArray(history) || history.length === 0) {
              throw new Error("No historical data returned.");
          }
-         // Further validation could check for date/value properties
         setChartData(history);
       } catch (err: any) {
         console.error(`Failed to fetch historical data for ${chartTicker}:`, err);
-        setChartError(`Could not load chart data for ${chartTicker}: ${err.message || 'Please try again.'}`);
-        setChartData([]); // Ensure data is empty on error
+        setChartError(`Could not load chart data for ${chartTicker}: ${err.message || 'Check API implementation.'}`);
+        setChartData([]);
       } finally {
         setLoadingChart(false);
       }
     };
 
     fetchChartData();
-   }, [chartTicker, chartRange]); // Dependencies: ticker and range
+   }, [chartTicker, chartRange, error]); // Added 'error' dependency
 
 
   const renderGainLossIcon = (value: number) => {
@@ -224,9 +219,8 @@ export default function PortfolioOverview() {
      return "text-muted-foreground";
    }
 
-   // Determine if we should show an error/warning alert
    const shouldShowAlert = error || partialDataWarning;
-   const alertVariant = error ? "destructive" : "warning"; // Use warning for partial data
+   const alertVariant = error ? "destructive" : "warning";
    const alertTitle = error ? "Error Loading Portfolio" : "Partial Data Loaded";
    const alertDescription = error || partialDataWarning;
 
@@ -236,9 +230,8 @@ export default function PortfolioOverview() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
            <div>
               <CardTitle>Portfolio Overview</CardTitle>
-              <CardDescription>Your current investment status and performance.</CardDescription>
+              <CardDescription>Your current investment status and performance. Requires API setup.</CardDescription>
            </div>
-            {/* Chart Range Selector - Disable if loading or error */}
             <Select value={chartRange} onValueChange={setChartRange} disabled={loading || !!error || loadingChart}>
               <SelectTrigger className="w-full sm:w-[100px]" aria-label="Select chart time range">
                 <SelectValue placeholder="Range" />
@@ -253,7 +246,6 @@ export default function PortfolioOverview() {
       </CardHeader>
       <CardContent className="space-y-6">
         {loading ? (
-          // Consistent Loading Skeletons
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-2 md:space-y-0">
                  <div className="space-y-1">
@@ -269,15 +261,14 @@ export default function PortfolioOverview() {
             <Skeleton className="h-[250px] w-full" />
             <Skeleton className="h-40 w-full" />
           </div>
-        ) : shouldShowAlert ? ( // Show alert if there's a general error OR a partial data warning
-           // Clear Error/Warning Display
+        ) : shouldShowAlert ? ( // Show alert first if there's an error or warning
             <Alert variant={alertVariant}>
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>{alertTitle}</AlertTitle>
               <AlertDescription>{alertDescription}</AlertDescription>
             </Alert>
         ) : (
-           // Main Content Display (only if not loading and no major error)
+           // Main Content Display (only if not loading and no error)
           <>
             {/* Portfolio Summary */}
             <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-2 md:space-y-0">
@@ -332,7 +323,6 @@ export default function PortfolioOverview() {
                            </p>
                        </div>
                     ) : (
-                        // Render Chart only if data is available
                         <>
                             <ChartContainer config={chartConfig} className="h-full w-full">
                                 <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
@@ -344,36 +334,26 @@ export default function PortfolioOverview() {
                                        tickMargin={8}
                                         tickFormatter={(value, index) => {
                                            try {
-                                               const date = new Date(value + 'T00:00:00Z'); // Use Z for UTC to avoid timezone issues
-                                               if (isNaN(date.getTime())) return ''; // Invalid date
-                                               const dayOfMonth = date.getUTCDate();
-                                               const numPoints = chartData.length; // Get actual number of points
-
+                                               const date = new Date(value + 'T00:00:00Z');
+                                               if (isNaN(date.getTime())) return '';
+                                               const numPoints = chartData.length;
                                                if (chartRange === '1m') {
-                                                   // Show first, last, and roughly weekly ticks for 1m
-                                                   const weekInterval = Math.max(1, Math.floor(numPoints / 4)); // Approx 4 weeks
+                                                   const weekInterval = Math.max(1, Math.floor(numPoints / 4));
                                                    return index === 0 || index === numPoints - 1 || index % weekInterval === 0
-                                                       ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-                                                       : '';
+                                                       ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '';
                                                } else if (chartRange === '6m') {
-                                                   // Show first, last, and approx monthly ticks for 6m
-                                                   const monthInterval = Math.max(1, Math.floor(numPoints / 6)); // Approx 6 months
+                                                   const monthInterval = Math.max(1, Math.floor(numPoints / 6));
                                                    return index === 0 || index === numPoints - 1 || index % monthInterval === 0
-                                                       ? date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
-                                                       : '';
+                                                       ? date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }) : '';
                                                } else if (chartRange === '1y') {
-                                                    // Show first, last, and approx quarterly ticks for 1y
-                                                   const quarterInterval = Math.max(1, Math.floor(numPoints / 4)); // Approx 4 quarters
+                                                   const quarterInterval = Math.max(1, Math.floor(numPoints / 4));
                                                    return index === 0 || index === numPoints - 1 || index % quarterInterval === 0
-                                                        ? date.toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' })
-                                                        : '';
-                                               } else {
-                                                   return ''; // Default case
-                                               }
-                                           } catch (e) { return ''; } // Catch potential date parsing errors
+                                                        ? date.toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' }) : '';
+                                               } else { return ''; }
+                                           } catch (e) { return ''; }
                                         }}
-                                        interval="preserveStartEnd" // Ensure start and end labels are shown if generated
-                                        minTickGap={chartRange === '1m' ? 5 : 15} // Adjust gap based on density
+                                        interval="preserveStartEnd"
+                                        minTickGap={chartRange === '1m' ? 5 : 15}
                                     />
                                     <YAxis
                                        tickLine={false}
@@ -381,19 +361,17 @@ export default function PortfolioOverview() {
                                        tickMargin={5}
                                        domain={['dataMin - (dataMax-dataMin)*0.05', 'dataMax + (dataMax-dataMin)*0.05']}
                                        tickFormatter={(value) => `$${value.toFixed(0)}`}
-                                       width={45} // Increased width slightly for better spacing
+                                       width={45}
                                      />
                                     <ChartTooltip
-                                       cursor={true} // Enable cursor for better interaction
+                                       cursor={true}
                                        content={
                                            <ChartTooltipContent
                                                labelFormatter={(label) => {
-                                                    try {
-                                                        return new Date(label + 'T00:00:00Z').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
-                                                    } catch { return label; }
+                                                    try { return new Date(label + 'T00:00:00Z').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }); } catch { return label; }
                                                }}
                                                formatter={(value) => formatCurrency(value as number)}
-                                               indicator="dot" // Changed indicator style
+                                               indicator="dot"
                                                labelClassName="text-sm font-semibold"
                                                nameKey="name"
                                            />
@@ -407,13 +385,13 @@ export default function PortfolioOverview() {
                                     </defs>
                                     <Area
                                        dataKey="value"
-                                       type="monotone" // Changed type for smoother curve
+                                       type="monotone"
                                        fill="url(#fillValue)"
                                        stroke="var(--color-value)"
                                        strokeWidth={2}
                                        name={chartTicker || "Value"}
-                                       dot={false} // Hide dots for cleaner look
-                                       activeDot={{ r: 4, strokeWidth: 1, fill: 'hsl(var(--background))', stroke: 'var(--color-value)' }} // Style active dot on hover
+                                       dot={false}
+                                       activeDot={{ r: 4, strokeWidth: 1, fill: 'hsl(var(--background))', stroke: 'var(--color-value)' }}
                                     />
                                 </AreaChart>
                             </ChartContainer>
@@ -447,7 +425,7 @@ export default function PortfolioOverview() {
                         {positions && positions.length > 0 ? (
                              positions.map((pos) => {
                                 const currentMarketData = marketDataMap[pos.ticker];
-                                const currentPrice = currentMarketData?.price; // Can be undefined if fetch failed
+                                const currentPrice = currentMarketData?.price;
                                 const hasValidPrice = typeof currentPrice === 'number' && currentPrice >= 0;
 
                                 const totalValue = hasValidPrice ? pos.quantity * currentPrice : undefined;
@@ -460,18 +438,19 @@ export default function PortfolioOverview() {
                                     <TableRow
                                         key={pos.ticker}
                                         className={`cursor-pointer hover:bg-muted/50 ${isSelected ? 'bg-primary/10 hover:bg-primary/15' : ''}`}
-                                        onClick={() => setChartTicker(pos.ticker)} // Set ticker on click
-                                        tabIndex={0} // Make it focusable
-                                        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setChartTicker(pos.ticker)} // Allow keyboard selection
+                                        onClick={() => hasValidPrice && setChartTicker(pos.ticker)} // Only allow selection if price is valid
+                                        tabIndex={0}
+                                        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && hasValidPrice && setChartTicker(pos.ticker)}
+                                        aria-disabled={!hasValidPrice}
                                     >
                                         <TableCell className={`font-medium ${isSelected ? 'text-primary' : ''}`}>{pos.ticker}</TableCell>
                                         <TableCell className="text-right">{pos.quantity.toLocaleString()}</TableCell>
                                         <TableCell className="text-right">{formatCurrency(pos.averagePrice)}</TableCell>
                                         <TableCell className="text-right">
-                                             {hasValidPrice ? formatCurrency(currentPrice) : <span className="text-xs text-muted-foreground italic">Loading...</span>}
+                                             {hasValidPrice ? formatCurrency(currentPrice) : <span className="text-xs text-destructive italic">Unavailable</span>}
                                          </TableCell>
                                         <TableCell className="text-right">
-                                             {hasValidPrice ? formatCurrency(totalValue) : <span className="text-xs text-muted-foreground italic">Loading...</span>}
+                                             {hasValidPrice ? formatCurrency(totalValue) : <span className="text-xs text-destructive italic">N/A</span>}
                                         </TableCell>
                                         <TableCell className={`text-right ${hasValidPrice ? getGainLossColor(gainLoss!) : 'text-muted-foreground'}`}>
                                             {hasValidPrice ? (
@@ -479,7 +458,7 @@ export default function PortfolioOverview() {
                                                 {formatCurrency(gainLoss)}
                                                 <span className="block text-xs">({gainLossPercent.toFixed(2)}%)</span>
                                                 </>
-                                            ) : <span className="text-xs text-muted-foreground italic">Loading...</span>}
+                                            ) : <span className="text-xs text-destructive italic">N/A</span>}
                                         </TableCell>
                                     </TableRow>
                                 )
@@ -494,7 +473,6 @@ export default function PortfolioOverview() {
                         </TableBody>
                     </Table>
                 </div>
-                 {/* Moved partial data warning to the alert above */}
             </div>
           </>
         )}
@@ -502,4 +480,3 @@ export default function PortfolioOverview() {
     </Card>
   );
 }
-

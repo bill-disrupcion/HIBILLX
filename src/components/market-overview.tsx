@@ -12,9 +12,9 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getMarketData, getTopMovers, type Instrument, type MarketData } from '@/services/broker-api';
+import { getMarketData, getTopMovers, type Instrument, type MarketData } from '@/services/broker-api'; // APIs are now real placeholders
 import { TrendingUp, TrendingDown, AlertTriangle, Minus, Newspaper } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { useToast } from '@/hooks/use-toast';
 
 interface IndexData extends MarketData {
   name: string;
@@ -26,7 +26,7 @@ interface MoversData {
 }
 
 export default function MarketOverview() {
-  const { toast } = useToast(); // Initialize toast
+  const { toast } = useToast();
   const [indices, setIndices] = useState<IndexData[] | null>(null);
   const [movers, setMovers] = useState<MoversData | null>(null);
   const [loadingIndices, setLoadingIndices] = useState(true);
@@ -61,42 +61,44 @@ export default function MarketOverview() {
    };
 
 
-  // Fetch Index Data
+  // Fetch Index Data - Attempts real API calls via getMarketData
   useEffect(() => {
     const fetchIndices = async () => {
       setLoadingIndices(true);
       setErrorIndices(null);
       try {
         const indexDataPromises = indexTickers.map(async (ticker) => {
-          try {
-            const data = await getMarketData(ticker);
-            const nameMap: Record<string, string> = {
-              'SPY': 'S&P 500 ETF',
-              'QQQ': 'Nasdaq 100 ETF',
-              'DIA': 'Dow Jones ETF'
-            };
-            return { ...data, name: nameMap[ticker] || ticker };
-          } catch (individualError: any) {
-             console.error(`Failed to fetch index data for ${ticker}:`, individualError);
-             throw new Error(`Failed to load data for ${ticker}. ${individualError.message || ''}`);
-          }
+          // getMarketData will throw if not implemented/configured
+          const data = await getMarketData(ticker);
+          const nameMap: Record<string, string> = { 'SPY': 'S&P 500 ETF', 'QQQ': 'Nasdaq 100 ETF', 'DIA': 'Dow Jones ETF' };
+          return { ...data, name: nameMap[ticker] || ticker };
         });
+
+        // Use Promise.allSettled to handle potential individual failures
         const results = await Promise.allSettled(indexDataPromises);
 
-        const fetchedIndices = results
-           .filter((result): result is PromiseFulfilledResult<IndexData> => result.status === 'fulfilled')
-           .map(result => result.value);
+        const fetchedIndices: IndexData[] = [];
+        const errors: string[] = [];
+        results.forEach((result, index) => {
+            if (result.status === 'fulfilled') {
+                fetchedIndices.push(result.value);
+            } else {
+                console.error(`Failed to fetch index data for ${indexTickers[index]}:`, result.reason);
+                errors.push(`Failed for ${indexTickers[index]}: ${result.reason?.message || 'Unknown error'}`);
+            }
+        });
 
-         const rejectedResults = results.filter(result => result.status === 'rejected');
-         if (rejectedResults.length > 0) {
-             const firstErrorMessage = (rejectedResults[0] as PromiseRejectedResult).reason?.message || 'Failed to load some index data.';
-              setErrorIndices(firstErrorMessage);
-             setIndices(fetchedIndices.length > 0 ? fetchedIndices : null);
-         } else {
-            setIndices(fetchedIndices);
-         }
+        setIndices(fetchedIndices);
 
-      } catch (err: any) {
+        if (errors.length > 0) {
+             // Show first error, or a generic message if all failed
+             const errorMsg = fetchedIndices.length > 0
+                 ? `Could not load data for some indices (${errors.length} failed). ${errors[0]}`
+                 : `Failed to load all index data. ${errors[0]}`;
+             setErrorIndices(errorMsg);
+        }
+
+      } catch (err: any) { // Catch errors from Promise.allSettled or initial setup
         console.error("General error fetching index data:", err);
         setErrorIndices(err.message || 'An unexpected error occurred while loading index data.');
         setIndices(null);
@@ -107,17 +109,18 @@ export default function MarketOverview() {
     fetchIndices();
   }, []); // Runs once on mount
 
-  // Fetch Movers Data
+  // Fetch Movers Data - Attempts real API calls via getTopMovers
   useEffect(() => {
     const fetchMovers = async () => {
       setLoadingMovers(true);
       setErrorMovers(null);
       try {
+        // getTopMovers will throw if not implemented/configured
         const fetchedMovers = await getTopMovers(5);
         setMovers(fetchedMovers);
       } catch (err: any) {
         console.error("Failed to fetch market movers:", err);
-        setErrorMovers(`Failed to load market movers: ${err.message || 'Please try again.'}`);
+        setErrorMovers(`Failed to load market movers: ${err.message || 'Check API implementation.'}`);
         setMovers(null);
       } finally {
         setLoadingMovers(false);
@@ -126,17 +129,14 @@ export default function MarketOverview() {
     fetchMovers();
   }, []); // Runs once on mount
 
-  // Placeholder handler for clicking on an index or mover
   const handleItemClick = useCallback((ticker: string, name: string) => {
-    // TODO: Implement navigation or modal display for detailed view
     console.log(`Clicked on ${name} (${ticker})`);
     toast({
         title: `Viewing ${name} (${ticker})`,
-        description: "Detailed view/chart functionality coming soon.",
+        description: "Detailed view/chart functionality requires implementation.",
     });
     // Example: router.push(`/market/${ticker}`);
-    // Or: setModalData({ ticker, name }); setIsModalOpen(true);
-  }, [toast]); // Added toast dependency
+  }, [toast]);
 
 
   const renderIndexCard = (index: IndexData) => (
@@ -166,14 +166,14 @@ export default function MarketOverview() {
                 <div className="space-y-2">
                     {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
                 </div>
-           ) : errorMovers && title === 'Top Gainers' ? (
+           ) : errorMovers && title === 'Top Gainers' ? ( // Show error only once
                <Alert variant="destructive" className="mt-2">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertTitle>Movers Error</AlertTitle>
                   <AlertDescription>{errorMovers}</AlertDescription>
                </Alert>
            ) : !data || data.length === 0 ? (
-                <p className="text-sm text-muted-foreground italic">No {title.toLowerCase()} data available.</p>
+                <p className="text-sm text-muted-foreground italic">No {title.toLowerCase()} data available{errorMovers ? ' (API error)' : '.'}</p>
            ) : (
               <Table className="text-xs">
                   <TableHeader>
@@ -214,7 +214,7 @@ export default function MarketOverview() {
         <CardTitle className="flex items-center">
            <Newspaper className="mr-2 h-5 w-5 text-primary" /> Market Overview
         </CardTitle>
-        <CardDescription>Live market trends and top movers.</CardDescription>
+        <CardDescription>Live market trends and top movers. Requires API setup.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Major Indices */}
@@ -240,9 +240,9 @@ export default function MarketOverview() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                    {indices.map(renderIndexCard)}
                 </div>
-            ) : !errorIndices ? (
+            ) : !errorIndices ? ( // Only show this if there wasn't an error but no data
                 <p className="text-sm text-muted-foreground italic">Index data unavailable.</p>
-            ) : null }
+            ) : null /* Error is already displayed */}
         </div>
 
         {/* Top Movers */}

@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useCallback } from 'react';
@@ -20,28 +21,27 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Loader2, Wand2, ShoppingCart, AlertTriangle } from 'lucide-react'; // Added AlertTriangle
+import { Loader2, Wand2, ShoppingCart, AlertTriangle } from 'lucide-react';
 import { OrderDialog, type OrderDetails } from './order-dialog';
 import { useToast } from '@/hooks/use-toast';
 
 import { analyzeInvestmentOptions, AnalyzeInvestmentOptionsInput, AnalyzeInvestmentOptionsOutput } from '@/ai/flows/analyze-investment-options';
 import { suggestTradingStrategies, SuggestTradingStrategiesInput, SuggestTradingStrategiesOutput } from '@/ai/flows/suggest-trading-strategies';
 import { diversifyPortfolio, DiversifyPortfolioInput, DiversifyPortfolioOutput } from '@/ai/flows/diversify-portfolio';
-import { submitOrder, Order } from '@/services/broker-api';
-import { Skeleton } from '@/components/ui/skeleton'; // Added Skeleton
+import { submitOrder, Order } from '@/services/broker-api'; // submitOrder now requires real API
+import { Skeleton } from '@/components/ui/skeleton';
 
 
 type AiTask = 'analyze' | 'suggest' | 'diversify';
 type AiResult = AnalyzeInvestmentOptionsOutput | SuggestTradingStrategiesOutput | DiversifyPortfolioOutput | null;
 
-// Define risk levels compatible with suggestTradingStrategies flow
 type RiskLevel = 'low' | 'medium' | 'high';
 const validRiskLevels: RiskLevel[] = ['low', 'medium', 'high'];
 
 export default function AiSuggestions() {
   const { toast } = useToast();
   const [selectedTask, setSelectedTask] = useState<AiTask>('analyze');
-  const [riskProfile, setRiskProfile] = useState<string>('moderate'); // General risk profile, may need mapping
+  const [riskProfile, setRiskProfile] = useState<string>('moderate');
   const [financialGoals, setFinancialGoals] = useState<string>('long-term growth');
   const [investmentAmount, setInvestmentAmount] = useState<string>('10000');
   const [preferredInstruments, setPreferredInstruments] = useState<string>('');
@@ -56,7 +56,7 @@ export default function AiSuggestions() {
   const handleGenerate = useCallback(async () => {
     setLoading(true);
     setError(null);
-    setResult(null); // Clear previous results
+    setResult(null);
 
     const amount = parseFloat(investmentAmount);
     if (isNaN(amount) || amount <= 0) {
@@ -65,37 +65,31 @@ export default function AiSuggestions() {
       return;
     }
 
-     // Map general risk profile to specific enum if needed by flows like 'suggest'
     const riskToleranceForSuggest = validRiskLevels.includes(riskProfile as RiskLevel)
         ? riskProfile as RiskLevel
-        : 'medium'; // Default if mapping fails or value is not directly compatible
+        : 'medium';
 
     try {
       let aiResponse: AiResult = null;
       console.log(`Initiating AI Task: ${selectedTask}`);
+      // These AI flow calls might depend on real data fetched within them (e.g., getInstruments)
+      // Ensure those underlying API calls are also implemented or handle potential errors.
       switch (selectedTask) {
         case 'analyze':
-          const analyzeInput: AnalyzeInvestmentOptionsInput = {
-            riskProfile,
-            financialGoals,
-            investmentAmount: amount,
-          };
+          const analyzeInput: AnalyzeInvestmentOptionsInput = { riskProfile, financialGoals, investmentAmount: amount };
           aiResponse = await analyzeInvestmentOptions(analyzeInput);
           break;
         case 'suggest':
           const suggestInput: SuggestTradingStrategiesInput = {
             investmentAmount: amount,
-            riskTolerance: riskToleranceForSuggest, // Use the mapped/validated risk level
+            riskTolerance: riskToleranceForSuggest,
             preferredInstruments: preferredInstruments ? preferredInstruments.split(',').map(s => s.trim()).filter(s => s) : undefined,
           };
-           aiResponse = await suggestTradingStrategies(suggestInput);
+          aiResponse = await suggestTradingStrategies(suggestInput);
           break;
         case 'diversify':
-          const diversifyInput: DiversifyPortfolioInput = {
-             investmentAmount: amount,
-             riskTolerance: riskProfile, // Assuming diversify flow can handle general strings or has internal mapping
-          };
-           aiResponse = await diversifyPortfolio(diversifyInput);
+          const diversifyInput: DiversifyPortfolioInput = { investmentAmount: amount, riskTolerance: riskProfile };
+          aiResponse = await diversifyPortfolio(diversifyInput);
           break;
         default:
              throw new Error(`Unknown AI task selected: ${selectedTask}`);
@@ -104,18 +98,32 @@ export default function AiSuggestions() {
       setResult(aiResponse);
     } catch (err: any) {
       console.error(`AI Task (${selectedTask}) failed:`, err);
-      setError(`Failed to generate suggestions: ${err.message || 'Please try again.'}`);
-       setResult(null); // Ensure result is null on error
+      // Provide more specific error guidance if possible
+      let detailedError = `Failed to generate suggestions: ${err.message || 'Please try again.'}`;
+      if (err.message?.includes('API not configured') || err.message?.includes('not implemented')) {
+           detailedError += ' Check API configurations in services/broker-api.ts and environment variables.';
+       }
+      setError(detailedError);
+       setResult(null);
     } finally {
       setLoading(false);
     }
-  }, [selectedTask, riskProfile, financialGoals, investmentAmount, preferredInstruments, toast]); // Added toast to dependencies
+  }, [selectedTask, riskProfile, financialGoals, investmentAmount, preferredInstruments, toast]);
 
    const handleInitiateOrder = useCallback((orderDetails: OrderDetails) => {
     console.log("Initiating order for:", orderDetails);
+    // Check if submitOrder is likely implemented (conceptual check)
+    if (!process.env.REAL_BROKER_API_KEY) {
+        toast({
+            variant: "destructive",
+            title: "Broker API Not Configured",
+            description: "Cannot place orders without configuring Broker API keys in environment variables.",
+        });
+        return;
+    }
     setCurrentOrderDetails(orderDetails);
     setIsOrderDialogOpen(true);
-  }, []); // Empty dependency array as it doesn't depend on component state
+  }, [toast]); // Added toast dependency
 
    const handleConfirmOrder = useCallback(async (order: Order) => {
     setIsOrderDialogOpen(false);
@@ -125,11 +133,12 @@ export default function AiSuggestions() {
      });
      console.log("Submitting order:", order);
     try {
+      // This now calls the potentially real (but maybe unimplemented) submitOrder
       const submittedOrder = await submitOrder(order);
       console.log("Order submitted response:", submittedOrder);
       toast({
         title: 'Order Submitted Successfully!',
-        description: `Your order for ${order.ticker} (${submittedOrder.id}) is ${submittedOrder.status || 'pending'}.`,
+        description: `Your order for ${order.ticker} (${submittedOrder.id || 'N/A'}) is ${submittedOrder.status || 'pending'}.`,
         variant: 'default',
       });
       // Optionally, trigger a refresh of portfolio data here
@@ -137,14 +146,14 @@ export default function AiSuggestions() {
       console.error('Order submission failed:', err);
       toast({
         title: 'Order Submission Failed',
-        description: `Could not place order for ${order.ticker}. ${err.message || 'Please try again.'}`,
+        description: `Could not place order for ${order.ticker}. ${err.message || 'Ensure Broker API is implemented correctly.'}`,
         variant: 'destructive',
       });
     }
     setCurrentOrderDetails(null); // Clear details after submission attempt
-   }, [toast]); // Depends on toast
+   }, [toast]);
 
-   // Extracted Result Rendering Logic
+   // Extracted Result Rendering Logic (remains largely the same, but Buy button action now has implications)
    const RenderResultContent = useCallback(({ resultData, totalAmount }: { resultData: AiResult, totalAmount: number }) => {
     if (!resultData) return null;
 
@@ -169,7 +178,7 @@ export default function AiSuggestions() {
                         variant="outline"
                         onClick={() => handleInitiateOrder({ ticker: opt.ticker, initialOrderType: 'buy', suggestedAmount: suggestedAmount })}
                         title={`Buy ${opt.ticker}`}
-                        className="w-full sm:w-auto flex-shrink-0" // Button styling
+                        className="w-full sm:w-auto flex-shrink-0"
                       >
                         <ShoppingCart className="mr-2 h-4 w-4" /> Buy
                       </Button>
@@ -180,7 +189,7 @@ export default function AiSuggestions() {
           </div>
            <div>
                <h4 className="font-semibold mb-2">Summary:</h4>
-               <p className="text-sm whitespace-pre-wrap">{resultData.summary}</p> {/* Use pre-wrap for formatting */}
+               <p className="text-sm whitespace-pre-wrap">{resultData.summary}</p>
            </div>
         </div>
       );
@@ -194,7 +203,7 @@ export default function AiSuggestions() {
                <h4 className="font-semibold mb-2">Suggested Strategies:</h4>
                <div className="space-y-4">
                  {resultData.strategies.map((strat, index) => (
-                   <div key={`${strat.name}-${index}`} className="p-3 border rounded-md bg-muted/30"> {/* Slightly different background */}
+                   <div key={`${strat.name}-${index}`} className="p-3 border rounded-md bg-muted/30">
                      <div className="flex justify-between items-center mb-1">
                         <h5 className="font-medium">{strat.name}</h5>
                         <span className={`text-xs px-1.5 py-0.5 rounded capitalize border ${
@@ -206,8 +215,7 @@ export default function AiSuggestions() {
                      <p className="text-sm text-muted-foreground mb-1">{strat.description}</p>
                      <p className="text-sm">Instruments: <span className="font-mono text-xs bg-muted px-1 rounded">{strat.instruments.join(', ')}</span></p>
                      <p className="text-sm">Est. Return: <span className="font-semibold">{(strat.expectedReturn || 0).toFixed(2)}%</span></p>
-                      {/* Strategy execution could involve multiple orders - consider a modal or separate view */}
-                       <Button size="sm" variant="outline" className="mt-2" disabled>Execute Strategy (Soon)</Button>
+                      <Button size="sm" variant="outline" className="mt-2" disabled>Execute Strategy (Needs Impl)</Button>
                    </div>
                  ))}
                </div>
@@ -242,14 +250,12 @@ export default function AiSuggestions() {
                 ) : (
                      <p className="text-sm text-muted-foreground italic">No specific allocation provided.</p>
                 )}
-                 {/* Execution requires complex logic (selling/buying) */}
-                  <Button size="sm" variant="outline" className="mt-3" disabled>Apply Diversification (Soon)</Button>
+                  <Button size="sm" variant="outline" className="mt-3" disabled>Apply Diversification (Needs Impl)</Button>
             </div>
         </div>
       );
     }
 
-    // Fallback if result format is unexpected
      console.warn("Unexpected AI result format:", resultData);
     return <p className="text-destructive">Could not display the AI result due to an unexpected format.</p>;
    }, [handleInitiateOrder]);
@@ -263,7 +269,7 @@ export default function AiSuggestions() {
              <Wand2 className="mr-2 h-5 w-5 text-primary" /> AI Finance Pilot Suggestions
           </CardTitle>
           <CardDescription>
-            Leverage AI to analyze options, suggest strategies, or diversify your portfolio based on your inputs.
+            Leverage AI to analyze options, suggest strategies, or diversify your portfolio. Requires API setup.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -291,11 +297,9 @@ export default function AiSuggestions() {
                   <SelectValue placeholder="Select risk profile" />
                 </SelectTrigger>
                 <SelectContent>
-                   {/* Combined and clarified options */}
                   <SelectItem value="conservative">Conservative (Low Risk)</SelectItem>
                   <SelectItem value="moderate">Moderate (Medium Risk)</SelectItem>
                   <SelectItem value="aggressive">Aggressive (High Risk)</SelectItem>
-                   {/* Keep original low/medium/high for direct compatibility if needed by some flows */}
                    <SelectItem value="low">Low</SelectItem>
                    <SelectItem value="medium">Medium</SelectItem>
                    <SelectItem value="high">High</SelectItem>
@@ -327,7 +331,7 @@ export default function AiSuggestions() {
                 value={financialGoals}
                 onChange={(e) => setFinancialGoals(e.target.value)}
                 disabled={loading}
-                rows={3} // Slightly more space
+                rows={3}
                 aria-label="Describe your financial goals"
               />
             </div>
@@ -344,11 +348,9 @@ export default function AiSuggestions() {
                 disabled={loading}
                 aria-label="Optional preferred stock tickers, comma separated"
               />
-               <p className="text-xs text-muted-foreground">Leave blank for AI to consider all available instruments.</p>
+               <p className="text-xs text-muted-foreground">Leave blank for AI to consider available instruments (requires API).</p>
             </div>
           )}
-
-          {/* Diversify task uses common inputs only */}
 
           {/* Action Button */}
           <Button onClick={handleGenerate} disabled={loading} className="w-full">
@@ -373,7 +375,6 @@ export default function AiSuggestions() {
           {/* Result Display Area */}
            <div className="pt-6 border-t">
              {loading ? (
-                 // Loading Skeletons for Result Area
                  <div className="space-y-4">
                      <Skeleton className="h-6 w-1/3 mb-2" />
                      <Skeleton className="h-10 w-full" />
@@ -384,22 +385,20 @@ export default function AiSuggestions() {
                       <Skeleton className="h-4 w-full" />
                  </div>
              ) : result ? (
-                 // Render Actual Result
                  <>
                      <h3 className="text-lg font-semibold mb-3">AI Generated Result:</h3>
-                     <div className="p-4 bg-muted/50 rounded-md border"> {/* Added border */}
+                     <div className="p-4 bg-muted/50 rounded-md border">
                          <RenderResultContent resultData={result} totalAmount={parseFloat(investmentAmount) || 0} />
                      </div>
                  </>
              ) : !error ? (
-                 // Initial state or after clearing, before generation
-                 <p className="text-center text-muted-foreground py-4">Enter your details and click "Generate Suggestions" to get AI insights.</p>
+                 <p className="text-center text-muted-foreground py-4">Enter details and click "Generate" for AI insights (requires API setup).</p>
              ) : null /* Error is shown above */ }
            </div>
         </CardContent>
       </Card>
 
-       {/* Order Dialog */}
+       {/* Order Dialog - Now relies on potentially real getMarketData and submitOrder */}
         <OrderDialog
             isOpen={isOrderDialogOpen}
             onOpenChange={setIsOrderDialogOpen}

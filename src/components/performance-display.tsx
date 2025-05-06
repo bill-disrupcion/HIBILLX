@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react'; // Added useCallback
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Card,
   CardContent,
@@ -10,129 +11,110 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Bot, Activity, Clock, Zap, TrendingUp, DollarSign, TrendingDown, AlertTriangle, LineChart, Info } from 'lucide-react'; // Added LineChart, Info
+import { Bot, Activity, Clock, Zap, TrendingUp, DollarSign, TrendingDown, AlertTriangle, LineChart, Info, CheckSquare, XSquare } from 'lucide-react'; // Added LineChart, Info, CheckSquare, XSquare
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"; // Import chart components
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"; // Import recharts components
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // Import Select
-import { getHistoricalData } from '@/services/broker-api'; // Import API function
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { getHistoricalData } from '@/services/broker-api'; // Real API placeholder
 
+// --- Interface Definitions ---
+
+interface AgentStatus {
+  isEnabled: boolean;
+  mode: 'strategy' | 'full' | 'unknown'; // Added 'unknown' state
+  allocatedAmount?: number; // Make optional as it might not always apply or be available
+  strategy?: string; // Optional active strategy name
+}
 
 interface AgentAction {
-  id: number;
+  id: string; // Use string ID from backend
   timestamp: Date;
-  type: 'BUY' | 'SELL' | 'REBALANCE' | 'INFO' | 'ERROR';
+  type: 'BUY' | 'SELL' | 'REBALANCE' | 'INFO' | 'ERROR' | 'ENABLE' | 'DISABLE' | 'MODE_CHANGE'; // Added lifecycle events
   details: string;
   amount?: number;
   ticker?: string;
+  strategyContext?: string; // Which strategy triggered the action
 }
 
-// Mock function to fetch agent status - Replace with actual API call
-const fetchAgentStatus = async (): Promise<typeof mockAgentStatus> => {
-    console.log("API Call: fetchAgentStatus");
-    await new Promise(resolve => setTimeout(resolve, 450)); // Simulate delay
-    if (Math.random() < 0.03) { // Simulate occasional fetch error - Reduced error rate
-        // throw new Error("Simulated API Error: Failed to fetch agent status.");
-        console.warn("Simulated API Error: Failed to fetch agent status."); // Log warning instead of throwing
-        return {...mockAgentStatus, isEnabled: undefined }; // Indicate indeterminate state
+// --- API Call Placeholders (Need Backend Implementation) ---
+
+/**
+ * Fetches the current status of the Bill X agent from the backend.
+ * @returns Promise resolving to AgentStatus
+ * @throws {Error} If backend call fails.
+ */
+const fetchAgentStatus = async (): Promise<AgentStatus> => {
+    console.log("API Call: fetchAgentStatus (Needs Backend)");
+    // ** REAL BACKEND INTEGRATION POINT **
+    // Replace with actual fetch call to your backend endpoint (e.g., /api/agent/status)
+    /*
+    try {
+        const response = await fetch('/api/agent/status', { headers: { ... auth headers ... } });
+        if (!response.ok) throw new Error(`Backend Error: ${response.status}`);
+        const status: AgentStatus = await response.json();
+        return status;
+    } catch (error: any) {
+        console.error("Failed to fetch agent status from backend:", error);
+        throw new Error(`Failed to load agent status: ${error.message}`);
     }
-    // Return mock data for now
-     return {
-        isEnabled: true,
-        mode: Math.random() > 0.5 ? 'strategy' : 'full',
-        allocatedAmount: Math.random() > 0.5 ? 500 : 1500,
-        strategy: Math.random() > 0.5 ? 'Balanced Approach' : 'Aggressive Tech Focus',
-    };
+    */
+
+    // Placeholder error for unimplemented backend:
+    throw new Error("fetchAgentStatus requires a backend implementation.");
+    // Placeholder return (unreachable if error is thrown):
+    // return { isEnabled: false, mode: 'unknown' };
+};
+
+/**
+ * Fetches the recent action log of the Bill X agent from the backend.
+ * @param limit Max number of actions to fetch.
+ * @returns Promise resolving to an array of AgentAction.
+ * @throws {Error} If backend call fails.
+ */
+const fetchAgentActions = async (limit: number = 50): Promise<AgentAction[]> => {
+    console.log(`API Call: fetchAgentActions(limit=${limit}) (Needs Backend)`);
+    // ** REAL BACKEND INTEGRATION POINT **
+    // Replace with actual fetch call to your backend endpoint (e.g., /api/agent/actions?limit=...)
+     /*
+    try {
+        const response = await fetch(`/api/agent/actions?limit=${limit}`, { headers: { ... auth headers ... } });
+        if (!response.ok) throw new Error(`Backend Error: ${response.status}`);
+        const actions: AgentAction[] = await response.json();
+        // Ensure timestamps are Date objects
+        return actions.map(action => ({ ...action, timestamp: new Date(action.timestamp) }));
+    } catch (error: any) {
+        console.error("Failed to fetch agent actions from backend:", error);
+        throw new Error(`Failed to load agent actions: ${error.message}`);
+    }
+    */
+
+    // Placeholder error for unimplemented backend:
+     throw new Error("fetchAgentActions requires a backend implementation.");
+     // Placeholder return (unreachable if error is thrown):
+    // return [];
 };
 
 
-// Mock data - Default/initial state
-const mockAgentStatus = {
-  isEnabled: false,
-  mode: 'strategy',
-  allocatedAmount: 0,
-  strategy: undefined as string | undefined, // Explicitly type strategy
-};
-
-// Mock function to generate random agent actions - modified to use a counter ref
-const generateMockAction = (idCounterRef: React.MutableRefObject<number>): AgentAction => {
-  const types: AgentAction['type'][] = ['BUY', 'SELL', 'REBALANCE', 'INFO', 'ERROR'];
-  const tickers = ['AAPL', 'MSFT', 'VOO', 'TSLA', 'AGG', 'XOM', 'GOOGL', 'NVDA'];
-  const type = types[Math.floor(Math.random() * types.length)];
-  const ticker = tickers[Math.floor(Math.random() * tickers.length)];
-  const quantity = Math.floor(Math.random() * 20) + 1;
-  const price = (Math.random() * 100 + 50).toFixed(2); // Random price between 50 and 150
-
-  let details = '';
-  let amount: number | undefined = undefined;
-  // Ensure strategy exists before using it in messages
-  const currentStrategy = mockAgentStatus.strategy || 'dynamic';
-
-  switch (type) {
-    case 'BUY':
-      details = `Executed BUY order for ${quantity} shares of ${ticker} @ $${price}`;
-      amount = quantity * parseFloat(price);
-      break;
-    case 'SELL':
-      details = `Executed SELL order for ${quantity} shares of ${ticker} @ $${price}`;
-      amount = quantity * parseFloat(price);
-      break;
-    case 'REBALANCE':
-       details = `Rebalanced portfolio according to '${currentStrategy}' strategy. Adjusted 5 positions.`;
-      break;
-    case 'INFO':
-       const infoMessages = [
-            `Monitoring market volatility for ${ticker}. Price: $${price}`,
-            `Adjusting target allocation for ${currentStrategy} portfolio.`,
-            `Analyzed recent news impact on ${ticker}. Sentiment: Neutral.`,
-            `Performance check: Portfolio value change +0.3% in last hour.`
-       ];
-      details = infoMessages[Math.floor(Math.random() * infoMessages.length)];
-      break;
-     case 'ERROR':
-       const errorMessages = [
-            `Failed to execute trade for ${ticker}: Insufficient funds.`,
-            `API connection error during market data fetch for ${ticker}. Retrying...`,
-            `Unexpected volatility detected for ${ticker}. Pausing automated actions for this asset.`,
-            `Order for ${quantity} ${ticker} partially filled. Monitoring completion.`
-       ];
-      details = `Agent Error: ${errorMessages[Math.floor(Math.random() * errorMessages.length)]}`;
-      break;
-  }
-
-  idCounterRef.current += 1;
-
-  return {
-    id: idCounterRef.current,
-    timestamp: new Date(),
-    type,
-    details,
-    amount: amount ? parseFloat(amount.toFixed(2)) : undefined,
-    ticker: ['BUY', 'SELL', 'INFO', 'ERROR'].includes(type) ? ticker : undefined,
-  };
-};
-
-// Chart configuration (reused from portfolio-overview)
+// Chart configuration (reused)
 const chartConfig = {
-  value: {
-    label: "Value",
-    color: "hsl(var(--primary))",
-  },
+  value: { label: "Value", color: "hsl(var(--primary))" },
 } satisfies React.ComponentProps<typeof ChartContainer>["config"];
 
 export default function PerformanceDisplay() {
-  const [agentStatus, setAgentStatus] = useState<typeof mockAgentStatus | null>(null);
+  const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [actions, setActions] = useState<AgentAction[]>([]);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [loadingActions, setLoadingActions] = useState(true);
-  const actionIdCounter = useRef<number>(0);
+  const [actionsError, setActionsError] = useState<string | null>(null); // Specific error for actions
+  // No longer need mock action counter
 
   // State for market chart
   const [chartData, setChartData] = useState<{ date: string; value: number }[]>([]);
-  const [chartRange, setChartRange] = useState<string>('1m'); // Default to 1 month
-  const [chartTicker] = useState<string>('SPY'); // Always chart SPY for market context
+  const [chartRange, setChartRange] = useState<string>('1m');
+  const [chartTicker] = useState<string>('SPY'); // Fixed market context chart
   const [loadingChart, setLoadingChart] = useState(true);
   const [chartError, setChartError] = useState<string | null>(null);
 
@@ -149,15 +131,11 @@ export default function PerformanceDisplay() {
         setStatusError(null);
         try {
             const status = await fetchAgentStatus();
-             // Check for the indeterminate state (isEnabled === undefined)
-             if (status.isEnabled === undefined) {
-                 throw new Error("Failed to retrieve agent status from API.");
-             }
             setAgentStatus(status);
         } catch (err: any) {
             console.error("Failed to fetch agent status:", err);
-            setStatusError(`Failed to load agent status: ${err.message || 'Please try again.'}`);
-            setAgentStatus(null);
+            setStatusError(err.message || 'Failed to load agent status. Check backend.');
+            setAgentStatus(null); // Ensure status is null on error
         } finally {
             setLoadingStatus(false);
         }
@@ -165,36 +143,40 @@ export default function PerformanceDisplay() {
     getStatus();
   }, []);
 
-  // Load initial actions and set up interval for updates
+  // Load initial actions and set up polling (optional)
   useEffect(() => {
-    setLoadingActions(true);
-    const initialActions: AgentAction[] = [];
-    for (let i = 0; i < 5 + Math.floor(Math.random() * 5); i++) {
-        const action = generateMockAction(actionIdCounter);
-        action.timestamp = new Date(Date.now() - (Math.random() * 10 * 60 * 1000 + 10000));
-        initialActions.push(action);
-    }
-    setActions(initialActions.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()));
-    setLoadingActions(false);
+    const getActions = async () => {
+        setLoadingActions(true);
+        setActionsError(null);
+        try {
+            const fetchedActions = await fetchAgentActions(50); // Fetch initial 50 actions
+            // Sort by timestamp descending if backend doesn't guarantee order
+            setActions(fetchedActions.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()));
+        } catch (err: any) {
+             console.error("Failed to fetch agent actions:", err);
+             setActionsError(err.message || 'Failed to load agent actions. Check backend.');
+             setActions([]); // Clear actions on error
+        } finally {
+             setLoadingActions(false);
+        }
+    };
+    getActions();
 
-    const intervalId = setInterval(() => {
-      setActions((prevActions) => {
-        const newAction = generateMockAction(actionIdCounter);
-        return [newAction, ...prevActions].slice(0, 50);
-      });
-    }, 8000 + Math.random() * 4000);
+    // Optional: Set up polling to refresh actions periodically
+    // const intervalId = setInterval(getActions, 30000); // Refresh every 30 seconds
+    // return () => clearInterval(intervalId); // Clean up interval on unmount
 
-    return () => clearInterval(intervalId);
-  }, []);
+  }, []); // Fetch on mount
 
 
-   // Fetch historical chart data when range changes (ticker is fixed to SPY)
+   // Fetch historical chart data for market context (SPY)
    useEffect(() => {
     const fetchChartData = async () => {
       setLoadingChart(true);
       setChartError(null);
       setChartData([]);
       try {
+        // getHistoricalData uses real API placeholder
         const history = await getHistoricalData(chartTicker, chartRange);
          if (!Array.isArray(history) || history.length === 0) {
              throw new Error("No historical data returned.");
@@ -202,19 +184,18 @@ export default function PerformanceDisplay() {
         setChartData(history);
       } catch (err: any) {
         console.error(`Failed to fetch historical data for ${chartTicker}:`, err);
-        setChartError(`Could not load chart data for ${chartTicker}: ${err.message || 'Please try again.'}`);
+        setChartError(`Could not load chart data for ${chartTicker}: ${err.message || 'Check API setup.'}`);
         setChartData([]);
       } finally {
         setLoadingChart(false);
       }
     };
-
     fetchChartData();
    }, [chartTicker, chartRange]); // Dependencies: ticker (fixed) and range
 
 
   const getStatusBadgeVariant = (status: boolean | undefined): 'default' | 'destructive' | 'secondary' => {
-     if (status === undefined) return 'secondary';
+     if (status === undefined) return 'secondary'; // Use secondary for unknown/error state
     return status ? 'default' : 'destructive';
   };
 
@@ -224,8 +205,11 @@ export default function PerformanceDisplay() {
             case 'SELL': return <TrendingDown className="h-4 w-4 text-red-500" />;
             case 'REBALANCE': return <Zap className="h-4 w-4 text-blue-500" />;
             case 'INFO': return <Activity className="h-4 w-4 text-gray-500" />;
-             case 'ERROR': return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
-            default: return <Bot className="h-4 w-4" />;
+            case 'ERROR': return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+            case 'ENABLE': return <CheckSquare className="h-4 w-4 text-green-500" />;
+            case 'DISABLE': return <XSquare className="h-4 w-4 text-red-500" />;
+            case 'MODE_CHANGE': return <Bot className="h-4 w-4 text-purple-500" />; // Example icon for mode change
+            default: return <Bot className="h-4 w-4" />; // Default Bot icon
         }
    }
 
@@ -249,7 +233,7 @@ export default function PerformanceDisplay() {
            ) : statusError ? (
                 <CardDescription className="text-destructive">Could not load agent status.</CardDescription>
            ) : (
-                <CardDescription>Current configuration and operational status.</CardDescription>
+                <CardDescription>Current configuration and operational status (Requires Backend).</CardDescription>
            )}
         </CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -265,7 +249,7 @@ export default function PerformanceDisplay() {
                     <AlertTitle>Status Error</AlertTitle>
                     <AlertDescription>{statusError}</AlertDescription>
                  </Alert>
-           ) : agentStatus ? (
+           ) : agentStatus ? ( // Only render if status is successfully loaded
              <>
                <div className="flex items-center space-x-2">
                     <span className="font-medium text-muted-foreground">Status:</span>
@@ -276,15 +260,15 @@ export default function PerformanceDisplay() {
                 <div className="flex items-center space-x-2">
                     <span className="font-medium text-muted-foreground">Mode:</span>
                     <span className="font-semibold flex items-center capitalize">
-                        {agentStatus.mode === 'full' ? <TrendingUp className="w-4 h-4 mr-1.5"/> : <Zap className="w-4 h-4 mr-1.5"/>}
-                        {agentStatus.mode === 'full' ? 'Full Automation' : agentStatus.mode}
+                        {agentStatus.mode === 'full' ? <TrendingUp className="w-4 h-4 mr-1.5"/> : agentStatus.mode === 'strategy' ? <Zap className="w-4 h-4 mr-1.5"/> : <Info className="w-4 h-4 mr-1.5" />}
+                        {agentStatus.mode === 'full' ? 'Full Automation' : agentStatus.mode === 'strategy' ? 'Strategy-Based' : 'Unknown'}
                     </span>
                </div>
                <div className="flex items-center space-x-2">
                     <span className="font-medium text-muted-foreground">Allocation:</span>
                     <span className="font-semibold flex items-center">
                         <DollarSign className="w-4 h-4 mr-1 text-green-600"/>
-                         ${agentStatus.allocatedAmount?.toLocaleString() ?? 'N/A'}
+                         {agentStatus.allocatedAmount !== undefined ? `$${agentStatus.allocatedAmount.toLocaleString()}` : 'N/A'}
                          {agentStatus.mode === 'strategy' && <span className="text-xs text-muted-foreground ml-1">(per strategy)</span>}
                     </span>
                </div>
@@ -295,13 +279,13 @@ export default function PerformanceDisplay() {
                     </div>
                )}
              </>
-           ) : (
+           ) : ( // This case should ideally not be reached if error handling is correct
                 <p className="text-muted-foreground sm:col-span-2 md:col-span-3">Agent status unavailable.</p>
            )}
         </CardContent>
       </Card>
 
-       {/* Market Performance Chart Card */}
+       {/* Market Performance Chart Card (SPY Context) */}
        <Card>
          <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -309,7 +293,7 @@ export default function PerformanceDisplay() {
                   <CardTitle className="flex items-center">
                      <LineChart className="mr-2 h-5 w-5 text-primary" /> Market Performance (S&P 500 - SPY)
                   </CardTitle>
-                  <CardDescription>Overall market trend for context.</CardDescription>
+                  <CardDescription>Overall market trend for context. Requires API setup.</CardDescription>
                </div>
                 <Select value={chartRange} onValueChange={setChartRange} disabled={loadingChart}>
                   <SelectTrigger className="w-full sm:w-[100px]" aria-label="Select chart time range">
@@ -345,75 +329,27 @@ export default function PerformanceDisplay() {
                          <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
                              <CartesianGrid strokeDasharray="3 3" vertical={false} />
                              <XAxis
-                                dataKey="date"
-                                tickLine={false}
-                                axisLine={false}
-                                tickMargin={8}
+                                dataKey="date" tickLine={false} axisLine={false} tickMargin={8}
                                 tickFormatter={(value, index) => {
                                     try {
-                                        const date = new Date(value + 'T00:00:00Z');
-                                        if (isNaN(date.getTime())) return '';
+                                        const date = new Date(value + 'T00:00:00Z'); if (isNaN(date.getTime())) return '';
                                         const numPoints = chartData.length;
-
-                                        if (chartRange === '1m') {
-                                            const weekInterval = Math.max(1, Math.floor(numPoints / 4));
-                                            return index === 0 || index === numPoints - 1 || index % weekInterval === 0
-                                                ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-                                                : '';
-                                        } else if (chartRange === '6m') {
-                                            const monthInterval = Math.max(1, Math.floor(numPoints / 6));
-                                            return index === 0 || index === numPoints - 1 || index % monthInterval === 0
-                                                ? date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
-                                                : '';
-                                        } else if (chartRange === '1y') {
-                                            const quarterInterval = Math.max(1, Math.floor(numPoints / 4));
-                                            return index === 0 || index === numPoints - 1 || index % quarterInterval === 0
-                                                 ? date.toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' })
-                                                 : '';
-                                        } else { return ''; }
+                                        if (chartRange === '1m') { const wi = Math.max(1, Math.floor(numPoints / 4)); return index === 0 || index === numPoints - 1 || index % wi === 0 ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : ''; }
+                                        else if (chartRange === '6m') { const mi = Math.max(1, Math.floor(numPoints / 6)); return index === 0 || index === numPoints - 1 || index % mi === 0 ? date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }) : ''; }
+                                        else if (chartRange === '1y') { const qi = Math.max(1, Math.floor(numPoints / 4)); return index === 0 || index === numPoints - 1 || index % qi === 0 ? date.toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' }) : ''; }
+                                        else { return ''; }
                                     } catch (e) { return ''; }
                                  }}
-                                 interval="preserveStartEnd"
-                                 minTickGap={chartRange === '1m' ? 5 : 15}
+                                 interval="preserveStartEnd" minTickGap={chartRange === '1m' ? 5 : 15}
                              />
                              <YAxis
-                                tickLine={false}
-                                axisLine={false}
-                                tickMargin={5}
+                                tickLine={false} axisLine={false} tickMargin={5}
                                 domain={['dataMin - (dataMax-dataMin)*0.05', 'dataMax + (dataMax-dataMin)*0.05']}
-                                tickFormatter={(value) => `$${value.toFixed(0)}`}
-                                width={45}
+                                tickFormatter={(value) => `$${value.toFixed(0)}`} width={45}
                               />
-                             <ChartTooltip
-                                cursor={true}
-                                content={
-                                    <ChartTooltipContent
-                                        labelFormatter={(label) => {
-                                             try { return new Date(label + 'T00:00:00Z').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }); } catch { return label; }
-                                        }}
-                                        formatter={(value) => formatCurrency(value as number)}
-                                        indicator="dot"
-                                        labelClassName="text-sm font-semibold"
-                                        nameKey="name"
-                                    />
-                                }
-                             />
-                             <defs>
-                               <linearGradient id="fillValuePerf" x1="0" y1="0" x2="0" y2="1">
-                                 <stop offset="5%" stopColor="var(--color-value)" stopOpacity={0.8}/>
-                                 <stop offset="95%" stopColor="var(--color-value)" stopOpacity={0.1}/>
-                               </linearGradient>
-                             </defs>
-                             <Area
-                                dataKey="value"
-                                type="monotone"
-                                fill="url(#fillValuePerf)"
-                                stroke="var(--color-value)"
-                                strokeWidth={2}
-                                name={chartTicker} // Use the ticker name
-                                dot={false}
-                                activeDot={{ r: 4, strokeWidth: 1, fill: 'hsl(var(--background))', stroke: 'var(--color-value)' }}
-                             />
+                             <ChartTooltip cursor={true} content={ <ChartTooltipContent labelFormatter={(label) => { try { return new Date(label + 'T00:00:00Z').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }); } catch { return label; } }} formatter={(value) => formatCurrency(value as number)} indicator="dot" labelClassName="text-sm font-semibold" nameKey="name" /> } />
+                             <defs> <linearGradient id="fillValuePerf" x1="0" y1="0" x2="0" y2="1"> <stop offset="5%" stopColor="var(--color-value)" stopOpacity={0.8}/> <stop offset="95%" stopColor="var(--color-value)" stopOpacity={0.1}/> </linearGradient> </defs>
+                             <Area dataKey="value" type="monotone" fill="url(#fillValuePerf)" stroke="var(--color-value)" strokeWidth={2} name={chartTicker} dot={false} activeDot={{ r: 4, strokeWidth: 1, fill: 'hsl(var(--background))', stroke: 'var(--color-value)' }} />
                          </AreaChart>
                      </ChartContainer>
                  )}
@@ -426,25 +362,23 @@ export default function PerformanceDisplay() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center"><Activity className="mr-2 text-primary" /> Agent Action Log</CardTitle>
-          <CardDescription>Real-time feed of actions taken by the Bill X agent.</CardDescription>
+          <CardDescription>Feed of actions taken by the Bill X agent (Requires Backend).</CardDescription>
         </CardHeader>
         <CardContent>
            <ScrollArea className="h-[400px] w-full pr-4 border rounded-md">
             {loadingActions ? (
                  <div className="space-y-4 p-4">
-                     {[...Array(5)].map((_, i) => (
-                         <div key={i} className="flex items-start space-x-3">
-                            <Skeleton className="h-5 w-5 rounded-full mt-0.5" />
-                            <div className="flex-1 space-y-1.5">
-                                <Skeleton className="h-4 w-3/4" />
-                                <Skeleton className="h-3 w-1/2" />
-                            </div>
-                         </div>
-                     ))}
+                     {[...Array(5)].map((_, i) => ( <div key={i} className="flex items-start space-x-3"> <Skeleton className="h-5 w-5 rounded-full mt-0.5" /> <div className="flex-1 space-y-1.5"> <Skeleton className="h-4 w-3/4" /> <Skeleton className="h-3 w-1/2" /> </div> </div> ))}
                  </div>
+            ) : actionsError ? (
+                 <Alert variant="destructive" className="m-4">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Actions Error</AlertTitle>
+                    <AlertDescription>{actionsError}</AlertDescription>
+                 </Alert>
             ) : actions.length === 0 ? (
                 <div className="flex items-center justify-center h-full">
-                     <p className="text-center text-muted-foreground py-10">No actions recorded yet.</p>
+                     <p className="text-center text-muted-foreground py-10">No agent actions recorded yet.</p>
                 </div>
             ) : (
                  <ul className="space-y-3 p-4">
@@ -467,6 +401,9 @@ export default function PerformanceDisplay() {
                                     )}
                                      {action.ticker && action.type !== 'BUY' && action.type !== 'SELL' && (
                                         <span className="text-xs font-mono bg-muted px-1 rounded">{action.ticker}</span>
+                                     )}
+                                     {action.strategyContext && (
+                                         <span className="text-xs italic text-muted-foreground">({action.strategyContext})</span>
                                      )}
                                 </p>
                             </div>

@@ -1,4 +1,4 @@
-// @ts-nocheck
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -15,8 +15,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getMarketData, type MarketData, type Order } from '@/services/broker-api';
-import { Loader2 } from 'lucide-react';
+import { getMarketData, type MarketData, type Order } from '@/services/broker-api'; // getMarketData is now real
+import { Loader2, AlertTriangle } from 'lucide-react'; // Added AlertTriangle
 
 export interface OrderDetails {
   ticker: string;
@@ -40,7 +40,6 @@ export function OrderDialog({ isOpen, onOpenChange, orderDetails, onConfirmOrder
 
   useEffect(() => {
     if (isOpen && orderDetails) {
-      // Reset state when dialog opens or orderDetails change
       setError(null);
       setQuantity('');
       setMarketData(null);
@@ -49,10 +48,10 @@ export function OrderDialog({ isOpen, onOpenChange, orderDetails, onConfirmOrder
 
       const fetchPrice = async () => {
         try {
+          // This now attempts a real API call via broker-api.ts
           const data = await getMarketData(orderDetails.ticker);
           setMarketData(data);
 
-          // Pre-fill quantity based on suggested amount if available
           if (orderDetails.suggestedAmount && data.price > 0) {
              const suggestedQuantity = Math.floor(orderDetails.suggestedAmount / data.price);
              if (suggestedQuantity > 0) {
@@ -60,9 +59,16 @@ export function OrderDialog({ isOpen, onOpenChange, orderDetails, onConfirmOrder
              }
           }
 
-        } catch (err) {
+        } catch (err: any) {
           console.error("Failed to fetch market data:", err);
-          setError(`Failed to fetch current price for ${orderDetails.ticker}.`);
+          // Provide specific error message if API isn't set up
+           let errorMsg = `Failed to fetch current price for ${orderDetails.ticker}.`;
+           if (err.message?.includes('API not configured') || err.message?.includes('not implemented')) {
+                errorMsg += ' Check API configurations.';
+           } else {
+                errorMsg += ` ${err.message || ''}`;
+           }
+          setError(errorMsg);
         } finally {
           setLoadingMarketData(false);
         }
@@ -72,11 +78,16 @@ export function OrderDialog({ isOpen, onOpenChange, orderDetails, onConfirmOrder
   }, [isOpen, orderDetails]);
 
   const handleConfirm = () => {
-    setError(null);
+    setError(null); // Clear previous errors before validating again
     const numQuantity = parseInt(quantity);
-    if (!orderDetails || !marketData) {
-      setError('Order details or market data missing.');
+    if (!orderDetails) {
+      setError('Order details missing.');
       return;
+    }
+    if (!marketData) {
+        // Don't allow confirm if market data couldn't be loaded
+        setError('Cannot confirm order without current market price.');
+        return;
     }
     if (isNaN(numQuantity) || numQuantity <= 0) {
       setError('Please enter a valid positive quantity.');
@@ -88,11 +99,16 @@ export function OrderDialog({ isOpen, onOpenChange, orderDetails, onConfirmOrder
       quantity: numQuantity,
       type: orderType,
       // In a real app, add order price type (market, limit), limit price, etc.
+       orderPriceType: 'market', // Default to market for simplicity
     };
     onConfirmOrder(order);
   };
 
-  const estimatedCost = marketData && quantity ? (parseInt(quantity) * marketData.price).toFixed(2) : '0.00';
+  // Calculate estimated cost only if market data and quantity are valid
+   const estimatedCost = (marketData && marketData.price > 0 && quantity && parseInt(quantity) > 0)
+     ? (parseInt(quantity) * marketData.price).toFixed(2)
+     : '0.00';
+
 
    const formatCurrency = (value: number | string | undefined) => {
     const numValue = Number(value);
@@ -114,7 +130,9 @@ export function OrderDialog({ isOpen, onOpenChange, orderDetails, onConfirmOrder
                 <Skeleton className="h-4 w-32 mt-1" />
             ) : marketData ? (
                 <span className="block mt-1"> Current Price: {formatCurrency(marketData.price)}</span>
-            ) : null}
+            ) : error ? (
+                 <span className="block mt-1 text-destructive text-xs">{error}</span>
+            ) : null }
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
@@ -143,7 +161,7 @@ export function OrderDialog({ isOpen, onOpenChange, orderDetails, onConfirmOrder
               onChange={(e) => setQuantity(e.target.value)}
               placeholder="Number of shares"
               min="1"
-              disabled={loadingMarketData || !marketData}
+              disabled={loadingMarketData || !marketData} // Disable if loading or if market data failed
             />
           </div>
 
@@ -152,6 +170,8 @@ export function OrderDialog({ isOpen, onOpenChange, orderDetails, onConfirmOrder
              <Label>Estimated Cost/Proceeds</Label>
              {loadingMarketData ? (
                  <Skeleton className="h-6 w-24" />
+             ) : error ? (
+                  <p className="text-sm text-muted-foreground italic">Cannot estimate cost (price unavailable).</p>
              ) : (
                 <p className="text-lg font-semibold">{formatCurrency(estimatedCost)}</p>
              )}
@@ -159,14 +179,19 @@ export function OrderDialog({ isOpen, onOpenChange, orderDetails, onConfirmOrder
            </div>
 
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && !loadingMarketData && ( // Show specific error if price fetch failed, but not while loading
+               <p className="text-sm text-destructive flex items-center">
+                   <AlertTriangle className="h-4 w-4 mr-1" /> {error}
+               </p>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             onClick={handleConfirm}
-            disabled={loadingMarketData || !marketData || !quantity || parseInt(quantity) <= 0}
+            disabled={loadingMarketData || !marketData || !quantity || parseInt(quantity) <= 0 || !!error} // Disable if loading, no data, invalid qty, or price error
           >
+             {loadingMarketData && <Loader2 className="h-4 w-4 mr-2 animate-spin"/>}
             Confirm {orderType.charAt(0).toUpperCase() + orderType.slice(1)} Order
           </Button>
         </DialogFooter>

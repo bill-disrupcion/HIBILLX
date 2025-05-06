@@ -13,12 +13,11 @@ import { Button } from '@/components/ui/button';
 import PortfolioOverview from './portfolio-overview';
 import MarketOverview from './market-overview';
 import { SidebarTrigger } from './ui/sidebar';
-import { Share2, Briefcase, Newspaper, Landmark, ArrowRightLeft, CircleDollarSign } from 'lucide-react'; // Added finance icons
+import { Share2, Briefcase, Newspaper, Landmark, ArrowRightLeft, CircleDollarSign, AlertTriangle } from 'lucide-react'; // Added finance icons, AlertTriangle
 import { useToast } from '@/hooks/use-toast';
 import { getAccountBalance, AccountBalance } from '@/services/broker-api'; // Import account balance
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; // For errors
-import { AlertTriangle } from 'lucide-react';
 import { DepositDialog } from './deposit-dialog'; // Import the DepositDialog
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; // Import Tooltip
 
@@ -31,11 +30,11 @@ const InvestmentTradingOptions = () => (
       <CardDescription>Explore investment options and execute trades.</CardDescription>
     </CardHeader>
     <CardContent>
-      <p className="text-sm text-muted-foreground italic">Investment and trading options coming soon...</p>
-       {/* TODO: Add components for searching instruments, placing orders, viewing options */}
+      <p className="text-sm text-muted-foreground italic">Investment and trading requires real Broker API integration.</p>
+       {/* TODO: Add components for searching instruments (using getInstruments), placing orders (using submitOrder) */}
        <div className="flex space-x-2 mt-4">
-            <Button variant="outline">Explore Stocks</Button>
-            <Button variant="outline">Place Order</Button>
+            <Button variant="outline" disabled>Explore Stocks (Needs Impl)</Button>
+            <Button variant="outline" disabled>Place Order (Needs Impl)</Button>
         </div>
     </CardContent>
   </Card>
@@ -44,27 +43,29 @@ const InvestmentTradingOptions = () => (
 export default function Dashboard() {
     const { toast } = useToast();
     const [referralLink, setReferralLink] = useState<string | null>(null);
-    const [isGeneratingLink, setIsGeneratingLink] = useState(false);
+    const [isGeneratingLink, setIsGeneratingLink] = useState(false); // Kept for mock referral link
     const [accountBalance, setAccountBalance] = useState<AccountBalance | null>(null);
     const [loadingBalance, setLoadingBalance] = useState(true);
     const [balanceError, setBalanceError] = useState<string | null>(null);
 
      // State for modal dialogs
     const [isDepositOpen, setIsDepositOpen] = useState(false);
-    const [isTransferOpen, setIsTransferOpen] = useState(false); // Placeholder state
-    const [isWithdrawOpen, setIsWithdrawOpen] = useState(false); // Placeholder state
+    // Placeholder states for Transfer/Withdraw - These will require backend implementation
+    // const [isTransferOpen, setIsTransferOpen] = useState(false);
+    // const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
 
-    // Fetch Account Balance
+    // Fetch Account Balance - Now attempts real API call via broker-api.ts
     useEffect(() => {
         const fetchBalance = async () => {
             setLoadingBalance(true);
             setBalanceError(null);
             try {
+                // This function will now throw an error if the real API isn't implemented/configured
                 const balance = await getAccountBalance();
                 setAccountBalance(balance);
             } catch (err: any) {
                 console.error("Failed to fetch account balance:", err);
-                setBalanceError(`Failed to load balance: ${err.message || 'Please try again.'}`);
+                setBalanceError(`Failed to load balance: ${err.message || 'Check API configuration and implementation.'}`);
                 setAccountBalance(null);
             } finally {
                 setLoadingBalance(false);
@@ -74,7 +75,7 @@ export default function Dashboard() {
     }, []); // Fetch once on mount
 
 
-    // Generate Referral Link (existing logic)
+    // Generate Referral Link (kept as mock for now)
     useEffect(() => {
       if (!referralLink && !isGeneratingLink) {
         setIsGeneratingLink(true);
@@ -119,16 +120,27 @@ export default function Dashboard() {
 
     // Handlers for modal dialogs
     const handleOpenDeposit = useCallback(() => {
+        // Check if backend is implemented - this is conceptual, real check is in initiateDeposit
+        // For now, just open the dialog, but warn user if initiateDeposit fails.
         setIsDepositOpen(true);
-        // toast({ title: "Deposit Modal Opened (Conceptual)" }); // Remove conceptual toast
     }, []);
+
      const handleOpenTransfer = useCallback(() => {
-        // setIsTransferOpen(true); // Keep commented until implemented
-        toast({ title: "Transfer Feature Coming Soon", description: "This feature is under development." });
+        // setIsTransferOpen(true); // Keep commented until backend implemented
+        toast({
+            variant: "destructive",
+            title: "Transfer Feature Not Implemented",
+            description: "This requires backend integration for fund movement."
+        });
     }, [toast]);
+
      const handleOpenWithdraw = useCallback(() => {
-        // setIsWithdrawOpen(true); // Keep commented until implemented
-        toast({ title: "Withdraw Feature Coming Soon", description: "This feature is under development." });
+        // setIsWithdrawOpen(true); // Keep commented until backend implemented
+        toast({
+            variant: "destructive",
+            title: "Withdraw Feature Not Implemented",
+            description: "This requires backend integration for fund withdrawal."
+        });
     }, [toast]);
 
 
@@ -168,37 +180,35 @@ export default function Dashboard() {
 
       <main className="grid gap-6 grid-cols-1 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
-           {/* Main Dashboard Content */}
+           {/* PortfolioOverview and MarketOverview now attempt real API calls */}
            <PortfolioOverview />
            <MarketOverview />
            <InvestmentTradingOptions />
-          {/* AiSuggestions component is removed from here */}
         </div>
 
         <div className="lg:col-span-1 space-y-6">
-           {/* Sidebar Widgets */}
-
            {/* Account Actions Card */}
            <Card>
                 <CardHeader>
                     <CardTitle>Account Actions</CardTitle>
-                    <CardDescription>Manage your funds.</CardDescription>
+                    <CardDescription>Manage your funds. Requires backend setup.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                     <Button className="w-full" onClick={handleOpenDeposit}>
                         <Landmark className="mr-2 h-4 w-4" /> Deposit Funds
                     </Button>
                      <Button className="w-full" variant="outline" onClick={handleOpenTransfer} disabled>
-                         <ArrowRightLeft className="mr-2 h-4 w-4" /> Transfer Funds (Soon)
+                         <ArrowRightLeft className="mr-2 h-4 w-4" /> Transfer Funds (Needs Backend)
                      </Button>
                      <Button className="w-full" variant="outline" onClick={handleOpenWithdraw} disabled>
-                        <CircleDollarSign className="mr-2 h-4 w-4" /> Withdraw Funds (Soon)
+                        <CircleDollarSign className="mr-2 h-4 w-4" /> Withdraw Funds (Needs Backend)
                      </Button>
+                     <p className="text-xs text-muted-foreground text-center pt-2">Transfer and Withdraw require backend implementation.</p>
                 </CardContent>
            </Card>
 
 
-           {/* Referral Program Card (Existing) */}
+           {/* Referral Program Card (Still Mock) */}
            <Card>
             <CardHeader>
               <CardTitle>Referral Program</CardTitle>
@@ -232,15 +242,15 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          {/* Market News Summary Card (Existing) */}
+          {/* Market News Summary Card (Placeholder) */}
            <Card>
              <CardHeader>
                <CardTitle className="flex items-center"><Newspaper className="mr-2 h-5 w-5 text-primary" /> Market News Summary</CardTitle>
                 <CardDescription>AI-powered insights from latest news.</CardDescription>
              </CardHeader>
              <CardContent>
-                <p className="text-sm text-muted-foreground italic">Market news summary coming soon...</p>
-                 {/* Integrate summarizeMarketNews flow here */}
+                <p className="text-sm text-muted-foreground italic">Market news summary requires API integration.</p>
+                 {/* TODO: Integrate summarizeMarketNews flow here after configuring a news API */}
              </CardContent>
            </Card>
         </div>
@@ -249,11 +259,7 @@ export default function Dashboard() {
 
      {/* Deposit Dialog */}
       <DepositDialog isOpen={isDepositOpen} onOpenChange={setIsDepositOpen} />
+      {/* Transfer/Withdraw dialogs would go here when implemented */}
     </>
   );
 }
-
-// Conceptual Dialog Components (placeholders - removed as DepositDialog is now real)
-// const TransferDialog = ({ isOpen, onOpenChange }) => <Dialog open={isOpen} onOpenChange={onOpenChange}><DialogContent>Transfer Form...</DialogContent></Dialog>;
-// const WithdrawDialog = ({ isOpen, onOpenChange }) => <Dialog open={isOpen} onOpenChange={onOpenChange}><DialogContent>Withdraw Form...</DialogContent></Dialog>;
-
