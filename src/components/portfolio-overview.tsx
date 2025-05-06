@@ -205,7 +205,13 @@ export default function PortfolioOverview() {
 
    // Fetch historical chart data when ticker or range changes
    useEffect(() => {
-    if (!chartTicker || error) return;
+    if (!chartTicker || error) {
+      setChartData([]); // Clear chart data if no ticker or if there was an initial load error
+      setLoadingChart(false);
+      setChartError(null);
+      return;
+    }
+
 
     const fetchChartData = async () => {
       setLoadingChart(true);
@@ -238,7 +244,7 @@ export default function PortfolioOverview() {
     };
 
     fetchChartData();
-   }, [chartTicker, chartRange, error]);
+   }, [chartTicker, chartRange, error]); // Add error to dependency array
 
 
   const renderGainLossIcon = (value: number | undefined) => {
@@ -284,7 +290,7 @@ export default function PortfolioOverview() {
         {loading ? (
           <div className="space-y-6"> <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-2 md:space-y-0"> <div className="space-y-1"> <Skeleton className="h-4 w-24" /> <Skeleton className="h-9 w-48" /> </div> <div className="flex items-center space-x-1"> <Skeleton className="h-4 w-4" /> <Skeleton className="h-6 w-32" /> <Skeleton className="h-4 w-20" /> </div> </div> <Skeleton className="h-[250px] w-full" /> <Skeleton className="h-40 w-full" /> </div>
         ) : shouldShowAlert ? (
-            <Alert variant={alertVariant}> <AlertTriangle className="h-4 w-4" /> <AlertTitle>{alertTitle}</AlertTitle> <AlertDescription>{alertDescription}</AlertDescription> </Alert>
+            <Alert variant={alertVariant}> <AlertTriangle className="h-4 w-4" /> <AlertTitle>{alertTitle}</AlertTitle> <AlertDescription>{alertDescription || "An error occurred while loading portfolio data."}</AlertDescription> </Alert>
         ) : (
           <>
             {/* Portfolio Summary */}
@@ -302,7 +308,7 @@ export default function PortfolioOverview() {
                   <span className="text-sm">
                     ({formatPercent(totalGainLossPercent)})
                  </span>
-                  <TooltipProvider> <Tooltip> <TooltipTrigger asChild> <Info className="h-3 w-3 text-muted-foreground cursor-help ml-1" /> </TooltipTrigger> <TooltipContent> <p>Total unrealized gain/loss based on average cost vs current market value.</p> {partialDataWarning && <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">May be incomplete.</p>} </TooltipContent> </Tooltip> </TooltipProvider>
+                  <TooltipProvider> <Tooltip> <TooltipTrigger> <Info className="h-3 w-3 text-muted-foreground cursor-help ml-1" /> </TooltipTrigger> <TooltipContent> <p>Total unrealized gain/loss based on average cost vs current market value.</p> {partialDataWarning && <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">May be incomplete.</p>} </TooltipContent> </Tooltip> </TooltipProvider>
               </div>
             </div>
 
@@ -324,7 +330,7 @@ export default function PortfolioOverview() {
                                 {/* Using ComposedChart to potentially show price and yield */}
                                 <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: -15, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                     <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(value) => { try { const date = new Date(value + 'T00:00:00Z'); if (isNaN(date.getTime())) return ''; const numPoints = chartData.length; if (chartRange === '1m') { const wi = Math.max(1, Math.floor(numPoints / 4)); return wi > 0 && (index === 0 || index === numPoints - 1 || index % wi === 0) ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : ''; } else if (chartRange === '6m') { const mi = Math.max(1, Math.floor(numPoints / 6)); return mi > 0 && (index === 0 || index === numPoints - 1 || index % mi === 0) ? date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }) : ''; } else if (chartRange === '1y') { const qi = Math.max(1, Math.floor(numPoints / 4)); return qi > 0 && (index === 0 || index === numPoints - 1 || index % qi === 0) ? date.toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' }) : ''; } else { return ''; } } catch (e) { return ''; } }} interval="preserveStartEnd" minTickGap={chartRange === '1m' ? 5 : 15} />
+                                     <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(value, index) => { try { const date = new Date(value + 'T00:00:00Z'); if (isNaN(date.getTime())) return ''; const numPoints = chartData.length; if (chartRange === '1m') { const wi = Math.max(1, Math.floor(numPoints / 4)); return wi > 0 && (index === 0 || index === numPoints - 1 || index % wi === 0) ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : ''; } else if (chartRange === '6m') { const mi = Math.max(1, Math.floor(numPoints / 6)); return mi > 0 && (index === 0 || index === numPoints - 1 || index % mi === 0) ? date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }) : ''; } else if (chartRange === '1y') { const qi = Math.max(1, Math.floor(numPoints / 4)); return qi > 0 && (index === 0 || index === numPoints - 1 || index % qi === 0) ? date.toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' }) : ''; } else { return ''; } } catch (e) { return ''; } }} interval="preserveStartEnd" minTickGap={chartRange === '1m' ? 5 : 15} />
                                     {/* Left Y-axis for Price */}
                                     <YAxis yAxisId="left" tickLine={false} axisLine={false} tickMargin={5} domain={['dataMin - (dataMax-dataMin)*0.05', 'dataMax + (dataMax-dataMin)*0.05']} tickFormatter={(value) => formatCurrency(value)} width={55} />
                                      {/* Right Y-axis for Yield (optional) */}
@@ -374,7 +380,7 @@ export default function PortfolioOverview() {
                                 const gainLoss = pos.unrealized_pnl ?? (marketValue !== undefined ? marketValue - (pos.quantity * pos.averagePrice) : undefined);
                                 const gainLossPercent = (gainLoss !== undefined && (pos.quantity * pos.averagePrice) > 0) ? (gainLoss / (pos.quantity * pos.averagePrice)) * 100 : 0;
                                 const isSelected = pos.ticker === chartTicker;
-                                const hasChartData = marketDataMap[pos.ticker] !== undefined || pos.current_price !== undefined; // Check if we have any price data for charting
+                                const hasChartData = marketDataMap[pos.ticker] !== undefined || pos.current_price !== undefined || pos.asset_type === AssetType.OTHER; // Assume yield indices can be charted
 
                                 // Format Quantity based on type (e.g., face value for bonds)
                                 const formattedQuantity = pos.asset_type === AssetType.SOVEREIGN_BOND || pos.asset_type === AssetType.TREASURY_BILL
@@ -397,7 +403,7 @@ export default function PortfolioOverview() {
                                         title={!hasChartData ? "Chart data unavailable" : `View chart for ${pos.ticker}`}
                                     >
                                         <TableCell className={`font-medium flex items-center gap-1.5 ${isSelected ? 'text-primary' : ''}`}>
-                                             {pos.asset_type === AssetType.SOVEREIGN_BOND || pos.asset_type === AssetType.TREASURY_BILL ? <Landmark className="h-3 w-3 text-muted-foreground"/> : <DollarSign className="h-3 w-3 text-muted-foreground"/>}
+                                             {pos.asset_type === AssetType.SOVEREIGN_BOND || pos.asset_type === AssetType.TREASURY_BILL ? <Landmark className="h-3 w-3 text-muted-foreground"/> : pos.asset_type === AssetType.OTHER ? <LineChartIcon className="h-3 w-3 text-muted-foreground"/> : <DollarSign className="h-3 w-3 text-muted-foreground"/>}
                                              {pos.ticker}
                                         </TableCell>
                                         <TableCell className="text-xs text-muted-foreground capitalize">{(pos.asset_type || 'N/A').replace('_', ' ')}</TableCell>

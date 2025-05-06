@@ -144,7 +144,7 @@ export default function MarketOverview() {
               <span className="ml-1 font-medium">{formatBasisPoints(index.changeValue)}</span>
               <TooltipProvider>
                  <Tooltip>
-                    <TooltipTrigger asChild>
+                    <TooltipTrigger>
                          <Info className="h-3 w-3 text-muted-foreground ml-1.5 cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent>
