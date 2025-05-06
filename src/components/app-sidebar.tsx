@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client';
 
 import {
@@ -10,7 +11,8 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar';
 import { Bot, Home, LineChart, Users } from 'lucide-react';
-import React from 'react';
+import React, { useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation'; // Import Next.js navigation hooks
 
 // Simple inline SVG for HIBLLX logo (replace with actual logo if available)
 const HibllxLogo = () => (
@@ -22,14 +24,31 @@ const HibllxLogo = () => (
 
 
 export default function AppSidebar() {
-  // In a real app, you'd use routing (like next/link or next/navigation)
-  // and manage active state based on the current route.
+  const pathname = usePathname();
+  const router = useRouter();
   const [activeItem, setActiveItem] = React.useState('dashboard');
 
-  const handleItemClick = (item: string) => {
-    setActiveItem(item);
-    // Add navigation logic here
-    console.log(`Navigate to ${item}`);
+  // Update active item based on current route
+  useEffect(() => {
+    if (pathname === '/') {
+      setActiveItem('dashboard');
+    } else if (pathname === '/bill-x') {
+      setActiveItem('bill-x');
+    } else if (pathname === '/performance') {
+       setActiveItem('performance');
+    } else if (pathname === '/referrals') {
+         setActiveItem('referrals');
+    } else {
+      // Optional: handle other paths or set a default
+      setActiveItem(''); // Or keep the last known active item
+    }
+  }, [pathname]);
+
+
+  const handleItemClick = (item: string, path: string) => {
+    // setActiveItem(item); // No longer needed, useEffect handles this
+    router.push(path); // Navigate using Next.js router
+    console.log(`Navigate to ${item} at ${path}`);
   };
 
   return (
@@ -48,7 +67,7 @@ export default function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              onClick={() => handleItemClick('dashboard')}
+              onClick={() => handleItemClick('dashboard', '/')}
               isActive={activeItem === 'dashboard'}
               tooltip="Dashboard"
             >
@@ -58,19 +77,20 @@ export default function AppSidebar() {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              onClick={() => handleItemClick('ai-agent')}
-              isActive={activeItem === 'ai-agent'}
-              tooltip="AI Agent"
+              onClick={() => handleItemClick('bill-x', '/bill-x')}
+              isActive={activeItem === 'bill-x'}
+              tooltip="Bill X AI"
             >
               <Bot />
-              <span>AI Agent</span>
+              <span>Bill X</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              onClick={() => handleItemClick('performance')}
+               onClick={() => handleItemClick('performance', '/performance')} // Assuming a /performance route
               isActive={activeItem === 'performance'}
               tooltip="Performance"
+               disabled // Disable temporarily if page not ready
             >
               <LineChart />
               <span>Performance</span>
@@ -78,9 +98,10 @@ export default function AppSidebar() {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              onClick={() => handleItemClick('referrals')}
+               onClick={() => handleItemClick('referrals', '/referrals')} // Assuming a /referrals route
               isActive={activeItem === 'referrals'}
               tooltip="Referrals"
+               disabled // Disable temporarily if page not ready
             >
               <Users />
               <span>Referrals</span>

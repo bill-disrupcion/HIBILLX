@@ -1,14 +1,13 @@
-import Dashboard from '@/components/dashboard';
 import AppSidebar from '@/components/app-sidebar';
+import BillXAgent from '@/components/bill-x-agent'; // Assuming this component is created
 import { SidebarInset } from '@/components/ui/sidebar';
 
-export default function Home() {
+export default function BillXPage() {
   return (
     <>
       <AppSidebar />
       <SidebarInset>
-         {/* The Dashboard now contains the relevant sections for the root page */}
-        <Dashboard />
+        <BillXAgent />
       </SidebarInset>
     </>
   );

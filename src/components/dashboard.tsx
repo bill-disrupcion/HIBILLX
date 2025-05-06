@@ -10,10 +10,42 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import PortfolioOverview from './portfolio-overview';
-import AiSuggestions from './ai-suggestions';
+// AiSuggestions is removed from the main dashboard
+// import AiSuggestions from './ai-suggestions';
 import { SidebarTrigger } from './ui/sidebar';
-import { Share2 } from 'lucide-react';
+import { Share2, TrendingUp, Briefcase, Newspaper } from 'lucide-react'; // Added icons
 import { useToast } from '@/hooks/use-toast';
+
+// Placeholder components for new dashboard sections
+const MarketOverview = () => (
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center"><TrendingUp className="mr-2 h-5 w-5 text-primary" /> Market Overview</CardTitle>
+      <CardDescription>Live market trends and indices.</CardDescription>
+    </CardHeader>
+    <CardContent>
+      <p className="text-sm text-muted-foreground italic">Market overview section coming soon...</p>
+      {/* TODO: Add actual market data display (e.g., charts, index values) */}
+    </CardContent>
+  </Card>
+);
+
+const InvestmentTradingOptions = () => (
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center"><Briefcase className="mr-2 h-5 w-5 text-primary" /> Investment & Trading</CardTitle>
+      <CardDescription>Explore investment options and execute trades.</CardDescription>
+    </CardHeader>
+    <CardContent>
+      <p className="text-sm text-muted-foreground italic">Investment and trading options coming soon...</p>
+       {/* TODO: Add components for searching instruments, placing orders, viewing options */}
+       <div className="flex space-x-2 mt-4">
+            <Button variant="outline">Explore Stocks</Button>
+            <Button variant="outline">Place Order</Button>
+        </div>
+    </CardContent>
+  </Card>
+);
 
 export default function Dashboard() {
     const { toast } = useToast();
@@ -22,8 +54,6 @@ export default function Dashboard() {
 
     React.useEffect(() => {
       // Placeholder for generating/fetching referral link in a real app
-      // This would likely involve a server call
-      // For demo, we'll generate a dummy link after a delay
       if (!referralLink && !isGeneratingLink) {
         setIsGeneratingLink(true);
         setTimeout(() => {
@@ -65,18 +95,22 @@ export default function Dashboard() {
       <header className="flex items-center justify-between pb-4 border-b">
         <div className="flex items-center space-x-2">
            <SidebarTrigger className="md:hidden"/>
-           <h1 className="text-2xl font-semibold text-foreground">HIBLLX Dashboard</h1>
+           <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
         </div>
         {/* Add user profile/settings dropdown here if needed */}
       </header>
 
       <main className="grid gap-6 grid-cols-1 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
-          <PortfolioOverview />
-          <AiSuggestions />
+           {/* Main Dashboard Content */}
+           <PortfolioOverview />
+           <MarketOverview />
+           <InvestmentTradingOptions />
+          {/* AiSuggestions component is removed from here */}
         </div>
 
         <div className="lg:col-span-1 space-y-6">
+           {/* Sidebar Widgets */}
            <Card>
             <CardHeader>
               <CardTitle>Referral Program</CardTitle>
@@ -93,6 +127,7 @@ export default function Dashboard() {
                     readOnly
                     value={referralLink}
                     className="flex-grow p-2 border rounded-md text-sm bg-muted text-muted-foreground"
+                    aria-label="Referral Link"
                   />
                   <Button size="icon" variant="outline" onClick={handleReferralClick} title="Copy Referral Link">
                     <Share2 className="h-4 w-4" />
@@ -110,12 +145,13 @@ export default function Dashboard() {
 
            <Card>
              <CardHeader>
-               <CardTitle>Market News Summary</CardTitle>
+               <CardTitle className="flex items-center"><Newspaper className="mr-2 h-5 w-5 text-primary" /> Market News Summary</CardTitle>
                 <CardDescription>AI-powered insights from latest news.</CardDescription>
              </CardHeader>
              <CardContent>
-                {/* Placeholder for AI news summary component */}
+                {/* TODO: Placeholder for AI news summary component/feature */}
                 <p className="text-sm text-muted-foreground italic">Market news summary coming soon...</p>
+                 {/* You would integrate the summarizeMarketNews flow here */}
              </CardContent>
            </Card>
         </div>
