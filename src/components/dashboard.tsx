@@ -10,26 +10,12 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import PortfolioOverview from './portfolio-overview';
-// AiSuggestions is removed from the main dashboard
-// import AiSuggestions from './ai-suggestions';
+import MarketOverview from './market-overview'; // Import the new component
 import { SidebarTrigger } from './ui/sidebar';
-import { Share2, TrendingUp, Briefcase, Newspaper } from 'lucide-react'; // Added icons
+import { Share2, Briefcase, Newspaper } from 'lucide-react'; // Removed TrendingUp
 import { useToast } from '@/hooks/use-toast';
 
-// Placeholder components for new dashboard sections
-const MarketOverview = () => (
-  <Card>
-    <CardHeader>
-      <CardTitle className="flex items-center"><TrendingUp className="mr-2 h-5 w-5 text-primary" /> Market Overview</CardTitle>
-      <CardDescription>Live market trends and indices.</CardDescription>
-    </CardHeader>
-    <CardContent>
-      <p className="text-sm text-muted-foreground italic">Market overview section coming soon...</p>
-      {/* TODO: Add actual market data display (e.g., charts, index values) */}
-    </CardContent>
-  </Card>
-);
-
+// Placeholder components for other sections (kept for context)
 const InvestmentTradingOptions = () => (
   <Card>
     <CardHeader>
@@ -104,7 +90,7 @@ export default function Dashboard() {
         <div className="lg:col-span-2 space-y-6">
            {/* Main Dashboard Content */}
            <PortfolioOverview />
-           <MarketOverview />
+           <MarketOverview /> {/* Use the imported component */}
            <InvestmentTradingOptions />
           {/* AiSuggestions component is removed from here */}
         </div>
