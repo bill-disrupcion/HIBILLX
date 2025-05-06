@@ -19,6 +19,8 @@ import { getAccountBalance, AccountBalance } from '@/services/broker-api'; // Im
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; // For errors
 import { AlertTriangle } from 'lucide-react';
+import { DepositDialog } from './deposit-dialog'; // Import the DepositDialog
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; // Import Tooltip
 
 
 // Placeholder components for other sections (kept for context)
@@ -47,10 +49,10 @@ export default function Dashboard() {
     const [loadingBalance, setLoadingBalance] = useState(true);
     const [balanceError, setBalanceError] = useState<string | null>(null);
 
-     // State for modal dialogs (conceptual)
+     // State for modal dialogs
     const [isDepositOpen, setIsDepositOpen] = useState(false);
-    const [isTransferOpen, setIsTransferOpen] = useState(false);
-    const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
+    const [isTransferOpen, setIsTransferOpen] = useState(false); // Placeholder state
+    const [isWithdrawOpen, setIsWithdrawOpen] = useState(false); // Placeholder state
 
     // Fetch Account Balance
     useEffect(() => {
@@ -115,23 +117,23 @@ export default function Dashboard() {
     }
    }, [referralLink, toast]);
 
-    // Handlers for conceptual modals
+    // Handlers for modal dialogs
     const handleOpenDeposit = useCallback(() => {
         setIsDepositOpen(true);
-        toast({ title: "Deposit Modal Opened (Conceptual)" });
-        // In real app: set modal state, potentially pass data
-    }, [toast]);
+        // toast({ title: "Deposit Modal Opened (Conceptual)" }); // Remove conceptual toast
+    }, []);
      const handleOpenTransfer = useCallback(() => {
-        setIsTransferOpen(true);
-        toast({ title: "Transfer Modal Opened (Conceptual)" });
+        // setIsTransferOpen(true); // Keep commented until implemented
+        toast({ title: "Transfer Feature Coming Soon", description: "This feature is under development." });
     }, [toast]);
      const handleOpenWithdraw = useCallback(() => {
-        setIsWithdrawOpen(true);
-        toast({ title: "Withdraw Modal Opened (Conceptual)" });
+        // setIsWithdrawOpen(true); // Keep commented until implemented
+        toast({ title: "Withdraw Feature Coming Soon", description: "This feature is under development." });
     }, [toast]);
 
 
   return (
+    <>
     <div className="flex flex-col min-h-screen p-4 md:p-6 lg:p-8 space-y-6 bg-background">
       <header className="flex items-center justify-between pb-4 border-b">
         <div className="flex items-center space-x-2">
@@ -147,7 +149,7 @@ export default function Dashboard() {
                    <TooltipProvider>
                       <Tooltip>
                           <TooltipTrigger asChild>
-                               <span className="text-sm font-semibold text-destructive flex items-center justify-end">
+                               <span className="text-sm font-semibold text-destructive flex items-center justify-end cursor-help">
                                    <AlertTriangle className="h-4 w-4 mr-1"/> Error
                                </span>
                           </TooltipTrigger>
@@ -186,16 +188,12 @@ export default function Dashboard() {
                     <Button className="w-full" onClick={handleOpenDeposit}>
                         <Landmark className="mr-2 h-4 w-4" /> Deposit Funds
                     </Button>
-                     <Button className="w-full" variant="outline" onClick={handleOpenTransfer}>
-                         <ArrowRightLeft className="mr-2 h-4 w-4" /> Transfer Funds
+                     <Button className="w-full" variant="outline" onClick={handleOpenTransfer} disabled>
+                         <ArrowRightLeft className="mr-2 h-4 w-4" /> Transfer Funds (Soon)
                      </Button>
-                     <Button className="w-full" variant="outline" onClick={handleOpenWithdraw}>
-                        <CircleDollarSign className="mr-2 h-4 w-4" /> Withdraw Funds
+                     <Button className="w-full" variant="outline" onClick={handleOpenWithdraw} disabled>
+                        <CircleDollarSign className="mr-2 h-4 w-4" /> Withdraw Funds (Soon)
                      </Button>
-                      {/* Conceptual Dialogs (would be implemented separately) */}
-                      {/* <DepositDialog isOpen={isDepositOpen} onOpenChange={setIsDepositOpen} /> */}
-                      {/* <TransferDialog isOpen={isTransferOpen} onOpenChange={setIsTransferOpen} /> */}
-                      {/* <WithdrawDialog isOpen={isWithdrawOpen} onOpenChange={setIsWithdrawOpen} /> */}
                 </CardContent>
            </Card>
 
@@ -248,10 +246,14 @@ export default function Dashboard() {
         </div>
       </main>
     </div>
+
+     {/* Deposit Dialog */}
+      <DepositDialog isOpen={isDepositOpen} onOpenChange={setIsDepositOpen} />
+    </>
   );
 }
 
-// Conceptual Dialog Components (placeholders)
-// const DepositDialog = ({ isOpen, onOpenChange }) => <Dialog open={isOpen} onOpenChange={onOpenChange}><DialogContent>Deposit Form...</DialogContent></Dialog>;
+// Conceptual Dialog Components (placeholders - removed as DepositDialog is now real)
 // const TransferDialog = ({ isOpen, onOpenChange }) => <Dialog open={isOpen} onOpenChange={onOpenChange}><DialogContent>Transfer Form...</DialogContent></Dialog>;
 // const WithdrawDialog = ({ isOpen, onOpenChange }) => <Dialog open={isOpen} onOpenChange={onOpenChange}><DialogContent>Withdraw Form...</DialogContent></Dialog>;
+
