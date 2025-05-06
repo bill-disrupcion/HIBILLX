@@ -19,8 +19,9 @@ const nextConfig: NextConfig = {
     ],
   },
    env: {
-    // Expose the variable to the browser
+    // Expose environment variables to the browser
     NEXT_PUBLIC_USE_MOCK_API: process.env.NEXT_PUBLIC_USE_MOCK_API,
+    NEXT_PUBLIC_BACKEND_API_ENDPOINT: process.env.NEXT_PUBLIC_BACKEND_API_ENDPOINT, // Expose backend endpoint
   },
 };
 
