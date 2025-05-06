@@ -11,6 +11,14 @@ export interface Instrument {
    * The name of the company or asset.
    */
   name: string;
+  /**
+   * Optional: Current price (can be added when fetching movers).
+   */
+  price?: number;
+  /**
+   * Optional: Price change percentage (can be added when fetching movers).
+   */
+  changePercent?: number;
 }
 
 /**
@@ -29,6 +37,18 @@ export interface MarketData {
    * The timestamp of the market data.
    */
   timestamp: Date;
+  /**
+   * Optional: Previous closing price for calculating change.
+   */
+  previousClose?: number;
+   /**
+   * Optional: Calculated price change value.
+   */
+   changeValue?: number;
+   /**
+    * Optional: Calculated price change percentage.
+    */
+   changePercent?: number;
 }
 
 /**
@@ -94,11 +114,11 @@ export interface Position {
 
 // --- Configuration ---
 const MOCK_API_DELAY_MS = {
-    FAST: 250, // Increased delay
-    MEDIUM: 500, // Increased delay
-    SLOW: 800, // Increased delay
+    FAST: 300, // Slightly increased delay
+    MEDIUM: 600, // Slightly increased delay
+    SLOW: 900, // Slightly increased delay
 };
-const MOCK_API_ERROR_RATE = 0.05; // 5% chance of simulated API error
+const MOCK_API_ERROR_RATE = 0.03; // Reduced error rate to 3%
 
 // --- Helper Functions ---
 /** Simulates network delay */
@@ -128,13 +148,9 @@ export async function getInstruments(): Promise<Instrument[]> {
   simulateError('Failed to fetch instruments list.');
 
   // ** REAL API INTEGRATION POINT **
-  // Replace with:
-  // const response = await fetch('YOUR_INSTRUMENT_API_ENDPOINT');
-  // if (!response.ok) throw new Error('Failed to fetch instruments');
-  // const data = await response.json();
-  // return data.map(item => ({ ticker: item.symbol, name: item.companyName }));
+  // Replace with actual API call
 
-  // Mock Data:
+  // Mock Data: Added some more diverse instruments
   return [
     { ticker: 'AAPL', name: 'Apple Inc.' },
     { ticker: 'GOOGL', name: 'Alphabet Inc.' },
@@ -148,6 +164,11 @@ export async function getInstruments(): Promise<Instrument[]> {
     { ticker: 'XOM', name: 'Exxon Mobil Corporation' },
     { ticker: 'VNQ', name: 'Vanguard Real Estate ETF' },
     { ticker: 'GLD', name: 'SPDR Gold Shares' },
+    { ticker: 'BTC-USD', name: 'Bitcoin USD'}, // Example crypto
+    { ticker: 'ETH-USD', name: 'Ethereum USD'}, // Example crypto
+    { ticker: 'SPY', name: 'SPDR S&P 500 ETF Trust'}, // Added index ETF
+    { ticker: 'QQQ', name: 'Invesco QQQ Trust'}, // Added index ETF
+    { ticker: 'DIA', name: 'SPDR Dow Jones Industrial Average ETF Trust'}, // Added index ETF
   ];
 }
 
@@ -164,25 +185,27 @@ export async function getMarketData(ticker: string): Promise<MarketData> {
   await simulateDelay(MOCK_API_DELAY_MS.FAST);
   simulateError(`Failed to fetch market data for ${ticker}.`);
 
-  // ** REAL API INTEGRATION POINT **
-  // Replace with:
-  // const response = await fetch(`YOUR_MARKET_DATA_API_ENDPOINT?symbol=${ticker}`);
-  // if (!response.ok) throw new Error(`Failed to fetch market data for ${ticker}`);
-  // const data = await response.json();
-  // return { ticker: data.symbol, price: data.latestPrice, timestamp: new Date(data.latestUpdate) };
-
-  // Mock Data:
+  // Mock Data: Added base prices for new instruments and previous close simulation
   const basePrice = {
     'AAPL': 190, 'GOOGL': 175, 'MSFT': 430, 'AMZN': 185, 'TSLA': 180,
-    'NVDA': 120, 'VOO': 510, 'AGG': 96, 'JPM': 195, 'XOM': 115,
-    'VNQ': 85, 'GLD': 215
+    'NVDA': 920, 'VOO': 510, 'AGG': 96, 'JPM': 195, 'XOM': 115,
+    'VNQ': 85, 'GLD': 215, 'BTC-USD': 68000, 'ETH-USD': 3500,
+    'SPY': 550, 'QQQ': 480, 'DIA': 400
   }[ticker] || 100;
-  const price = basePrice + (Math.random() - 0.5) * (basePrice * 0.03);
+
+  const previousClose = basePrice * (1 + (Math.random() - 0.5) * 0.02); // Simulate previous close +/- 1%
+  const price = previousClose * (1 + (Math.random() - 0.45) * 0.03); // Simulate current price based on previous close, slightly biased up
+  const changeValue = price - previousClose;
+  const changePercent = previousClose > 0 ? (changeValue / previousClose) * 100 : 0;
+
 
   return {
     ticker: ticker,
     price: parseFloat(price.toFixed(2)),
     timestamp: new Date(),
+    previousClose: parseFloat(previousClose.toFixed(2)),
+    changeValue: parseFloat(changeValue.toFixed(2)),
+    changePercent: parseFloat(changePercent.toFixed(2)),
   };
 }
 
@@ -204,34 +227,6 @@ export async function submitOrder(order: Order): Promise<Order> {
       throw new Error('Simulated API Error: Insufficient funds.');
   }
   simulateError(`Failed to submit order for ${order.ticker}.`);
-
-
-  // ** REAL API INTEGRATION POINT **
-  // Replace with:
-  // const response = await fetch('YOUR_BROKER_ORDER_API_ENDPOINT', {
-  //   method: 'POST',
-  //   headers: { 'Authorization': 'Bearer YOUR_AUTH_TOKEN', 'Content-Type': 'application/json' },
-  //   body: JSON.stringify({
-  //     symbol: order.ticker,
-  //     qty: order.quantity,
-  //     side: order.type,
-  //     type: order.orderPriceType || 'market', // 'market', 'limit', etc.
-  //     time_in_force: 'day', // 'day', 'gtc', etc.
-  //     limit_price: order.limitPrice, // Required if type is 'limit'
-  //   }),
-  // });
-  // if (!response.ok) {
-  //      const errorData = await response.json();
-  //      throw new Error(`Order submission failed: ${errorData.message || response.statusText}`);
-  // }
-  // const brokerResponse = await response.json();
-  // return {
-  //      ...order,
-  //      id: brokerResponse.id,
-  //      status: brokerResponse.status, // e.g., 'accepted', 'pending_new'
-  //      createdAt: new Date(brokerResponse.created_at),
-  //      updatedAt: new Date(brokerResponse.updated_at),
-  // };
 
   // Mock Response:
   const submittedOrder: Order = {
@@ -258,20 +253,7 @@ export async function getPositions(): Promise<Position[]> {
   await simulateDelay(MOCK_API_DELAY_MS.MEDIUM);
   simulateError('Failed to fetch portfolio positions.');
 
-  // ** REAL API INTEGRATION POINT **
-  // Replace with:
-  // const response = await fetch('YOUR_BROKER_POSITIONS_API_ENDPOINT', {
-  //   headers: { 'Authorization': 'Bearer YOUR_AUTH_TOKEN' },
-  // });
-  // if (!response.ok) throw new Error('Failed to fetch positions');
-  // const data = await response.json();
-  // return data.map(item => ({
-  //      ticker: item.symbol,
-  //      quantity: parseFloat(item.qty),
-  //      averagePrice: parseFloat(item.avg_entry_price),
-  // }));
-
-  // Mock Data:
+  // Mock Data: (Ensure these tickers exist in getInstruments base prices)
   return [
     { ticker: 'AAPL', quantity: 15, averagePrice: 165.50 },
     { ticker: 'MSFT', quantity: 10, averagePrice: 400.00 },
@@ -279,6 +261,7 @@ export async function getPositions(): Promise<Position[]> {
     { ticker: 'TSLA', quantity: 5, averagePrice: 190.75 },
     { ticker: 'AGG', quantity: 50, averagePrice: 97.10 },
     { ticker: 'XOM', quantity: 25, averagePrice: 110.00 },
+    { ticker: 'NVDA', quantity: 2, averagePrice: 850.00 },
   ];
 }
 
@@ -296,22 +279,6 @@ export async function getPositions(): Promise<Position[]> {
    await simulateDelay(MOCK_API_DELAY_MS.SLOW); // Historical data can be slower
    simulateError(`Failed to fetch historical data for ${ticker} (${range}).`);
 
-   // ** REAL API INTEGRATION POINT **
-   // Replace with API call, e.g., Alpha Vantage TIME_SERIES_DAILY_ADJUSTED
-   // or similar endpoints from other providers based on the 'range'.
-   // You'll need to parse the API response into the { date: string; value: number } format.
-   // Example structure (pseudo-code):
-   // const response = await fetch(`YOUR_HISTORICAL_API_ENDPOINT?symbol=${ticker}&range=${range}`);
-   // if (!response.ok) throw new Error('Failed to fetch historical data');
-   // const data = await response.json();
-   // const timeSeries = data['Time Series (Daily)']; // Adjust based on API response structure
-   // return Object.entries(timeSeries)
-   //    .map(([date, values]) => ({
-   //      date: date,
-   //      value: parseFloat(values['4. close']), // Or adjusted close
-   //    }))
-   //    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()) // Ensure ascending order
-   //    .slice(-numberOfPointsBasedOnRange); // Trim to the desired range
 
    // Mock Data Generation:
    const endDate = new Date();
@@ -328,15 +295,11 @@ export async function getPositions(): Promise<Position[]> {
    const data = [];
    let currentMarketData: MarketData | null = null;
    try {
-     currentMarketData = await getMarketData(ticker); // Use current as a reference
+     // Use non-error-throwing variant for generating history base value
+     currentMarketData = await getMarketDataNoError(ticker);
    } catch (err) {
       console.warn(`Could not fetch current market data for ${ticker} while generating history, using base price.`);
-      const basePrice = {
-        'AAPL': 190, 'GOOGL': 175, 'MSFT': 430, 'AMZN': 185, 'TSLA': 180,
-        'NVDA': 120, 'VOO': 510, 'AGG': 96, 'JPM': 195, 'XOM': 115,
-        'VNQ': 85, 'GLD': 215
-      }[ticker] || 100;
-       currentMarketData = { ticker, price: basePrice, timestamp: new Date() };
+      currentMarketData = getBaseMarketData(ticker);
    }
    let currentValue = currentMarketData.price;
 
@@ -346,8 +309,8 @@ export async function getPositions(): Promise<Position[]> {
    currentValue *= (1 + (Math.random() - 0.6) * rangeFactor); // Start lower/higher based on random trend
 
    const timeDiff = endDate.getTime() - startDate.getTime();
-   const dailyVolatility = ['TSLA', 'NVDA'].includes(ticker) ? 0.04 : 0.025;
-   const drift = 1.0001; // Slight upward bias
+   const dailyVolatility = ['TSLA', 'NVDA', 'BTC-USD', 'ETH-USD'].includes(ticker) ? 0.04 : 0.025;
+   const drift = 1.0001 + (Math.random() - 0.3) * 0.0005; // Slight variable upward bias
 
    for (let i = numPoints -1 ; i >= 0; i--) { // Generate backwards from end date
        const date = new Date(endDate.getTime() - (timeDiff * i) / numPoints);
@@ -371,6 +334,103 @@ export async function getPositions(): Promise<Position[]> {
    return data;
  }
 
+/**
+ * Helper to get base market data without delay or errors, used for history generation.
+ */
+function getBaseMarketData(ticker: string): MarketData {
+    const basePrice = {
+        'AAPL': 190, 'GOOGL': 175, 'MSFT': 430, 'AMZN': 185, 'TSLA': 180,
+        'NVDA': 920, 'VOO': 510, 'AGG': 96, 'JPM': 195, 'XOM': 115,
+        'VNQ': 85, 'GLD': 215, 'BTC-USD': 68000, 'ETH-USD': 3500,
+        'SPY': 550, 'QQQ': 480, 'DIA': 400
+    }[ticker] || 100;
+    const price = basePrice; // No variation for base
+    return { ticker, price, timestamp: new Date() };
+}
+
+/**
+ * Internal helper: Fetches market data without simulating errors.
+ * Useful for internal calculations where an error is problematic (like history generation).
+ */
+ async function getMarketDataNoError(ticker: string): Promise<MarketData> {
+    console.log(`Internal API Call: getMarketDataNoError(${ticker})`);
+    await simulateDelay(MOCK_API_DELAY_MS.FAST / 2); // Faster internal call
+
+    // Mock Data: (Same logic as getMarketData but no simulateError)
+    const basePrice = {
+        'AAPL': 190, 'GOOGL': 175, 'MSFT': 430, 'AMZN': 185, 'TSLA': 180,
+        'NVDA': 920, 'VOO': 510, 'AGG': 96, 'JPM': 195, 'XOM': 115,
+        'VNQ': 85, 'GLD': 215, 'BTC-USD': 68000, 'ETH-USD': 3500,
+        'SPY': 550, 'QQQ': 480, 'DIA': 400
+      }[ticker] || 100;
+
+    const previousClose = basePrice * (1 + (Math.random() - 0.5) * 0.02);
+    const price = previousClose * (1 + (Math.random() - 0.45) * 0.03);
+    const changeValue = price - previousClose;
+    const changePercent = previousClose > 0 ? (changeValue / previousClose) * 100 : 0;
+
+    return {
+      ticker: ticker,
+      price: parseFloat(price.toFixed(2)),
+      timestamp: new Date(),
+      previousClose: parseFloat(previousClose.toFixed(2)),
+      changeValue: parseFloat(changeValue.toFixed(2)),
+      changePercent: parseFloat(changePercent.toFixed(2)),
+    };
+}
+
+
+/**
+ * Asynchronously retrieves the top market movers (gainers and losers).
+ *
+ * @param count The number of gainers/losers to retrieve (e.g., 5).
+ * @returns A promise resolving to an object containing arrays of gainers and losers.
+ * @throws Simulated API Error occasionally.
+ */
+export async function getTopMovers(count: number = 5): Promise<{ gainers: Instrument[], losers: Instrument[] }> {
+    console.log(`API Call: getTopMovers(count=${count})`);
+    await simulateDelay(MOCK_API_DELAY_MS.SLOW);
+    simulateError('Failed to fetch top market movers.');
+
+    // ** REAL API INTEGRATION POINT **
+    // Replace with API call to fetch gainers/losers list.
+    // Example structure:
+    // const response = await fetch(`YOUR_MOVERS_API_ENDPOINT?limit=${count}`);
+    // if (!response.ok) throw new Error('Failed to fetch movers');
+    // const data = await response.json();
+    // return {
+    //      gainers: data.gainers.map(item => ({ ticker: item.symbol, name: item.name, price: item.price, changePercent: item.changePercent })),
+    //      losers: data.losers.map(item => ({ ticker: item.symbol, name: item.name, price: item.price, changePercent: item.changePercent }))
+    // };
+
+    // Mock Data Generation:
+    const instruments = await getInstruments(); // Get all available instruments
+    const moversData = await Promise.all(
+        instruments.map(async (inst) => {
+            try {
+                // Use non-error throwing version for generating this list
+                const marketData = await getMarketDataNoError(inst.ticker);
+                return {
+                    ...inst,
+                    price: marketData.price,
+                    changePercent: marketData.changePercent,
+                };
+            } catch (e) {
+                return null; // Ignore instruments that fail to fetch data
+            }
+        })
+    );
+
+    const validMovers = moversData.filter(m => m && m.changePercent !== undefined) as (Instrument & { price: number; changePercent: number })[];
+
+    validMovers.sort((a, b) => (b.changePercent ?? 0) - (a.changePercent ?? 0));
+
+    const gainers = validMovers.slice(0, count);
+    const losers = validMovers.slice(-count).reverse(); // Get last 'count' items and reverse for highest negative change first
+
+    return { gainers, losers };
+}
+
 
 // --- Potential Future Additions ---
 // - Authentication management (store/refresh tokens securely)
@@ -382,4 +442,3 @@ export async function getPositions(): Promise<Position[]> {
 //   - Fetching account balance/buying power (getAccountDetails())
 //   - Managing watchlists
 //   - Fetching company profiles, news, analyst ratings etc.
-
