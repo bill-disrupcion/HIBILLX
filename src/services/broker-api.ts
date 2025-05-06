@@ -35,6 +35,10 @@ export interface MarketData {
  */
 export interface Order {
   /**
+   * Optional unique ID for the order (assigned by broker).
+   */
+  id?: string;
+  /**
    * The ticker symbol of the instrument.
    */
   ticker: string;
@@ -46,7 +50,28 @@ export interface Order {
    * The order type (e.g., buy, sell).
    */
   type: 'buy' | 'sell';
+  /**
+   * The type of order (e.g., market, limit). Defaults to market.
+   */
+  orderPriceType?: 'market' | 'limit';
+   /**
+   * The limit price, if orderPriceType is 'limit'.
+   */
+  limitPrice?: number;
+  /**
+   * The status of the order (e.g., pending, filled, cancelled).
+   */
+  status?: 'pending' | 'filled' | 'partially_filled' | 'cancelled' | 'rejected';
+  /**
+   * The timestamp when the order was created or submitted.
+   */
+  createdAt?: Date;
+    /**
+   * The timestamp when the order was last updated (e.g., filled).
+   */
+  updatedAt?: Date;
 }
+
 
 /**
  * Represents the current position of an instrument.
@@ -86,6 +111,11 @@ export async function getInstruments(): Promise<Instrument[]> {
     { ticker: 'NVDA', name: 'NVIDIA Corporation'},
     { ticker: 'VOO', name: 'Vanguard S&P 500 ETF'},
     { ticker: 'AGG', name: 'iShares Core U.S. Aggregate Bond ETF'},
+     // Add more diverse options
+    { ticker: 'JPM', name: 'JPMorgan Chase & Co.' },
+    { ticker: 'XOM', name: 'Exxon Mobil Corporation' },
+    { ticker: 'VNQ', name: 'Vanguard Real Estate ETF' },
+    { ticker: 'GLD', name: 'SPDR Gold Shares' },
   ];
 }
 
@@ -101,18 +131,22 @@ export async function getMarketData(ticker: string): Promise<MarketData> {
   console.log(`Using mock data for getMarketData(${ticker})`);
   await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
 
-  // Simulate some price variation
+  // Simulate some price variation - More realistic base prices
   const basePrice = {
-    'AAPL': 175,
-    'GOOGL': 150,
-    'MSFT': 450,
-    'AMZN': 180,
-    'TSLA': 185,
-    'NVDA': 125,
-    'VOO': 500,
-    'AGG': 98
-  }[ticker] || 100;
-  const price = basePrice + (Math.random() - 0.5) * (basePrice * 0.05); // +/- 5% fluctuation
+    'AAPL': 190,
+    'GOOGL': 175,
+    'MSFT': 430,
+    'AMZN': 185,
+    'TSLA': 180,
+    'NVDA': 120, // Adjusted post-split assumption
+    'VOO': 510,
+    'AGG': 96,
+    'JPM': 195,
+    'XOM': 115,
+    'VNQ': 85,
+    'GLD': 215
+  }[ticker] || 100; // Default price if ticker not found
+  const price = basePrice + (Math.random() - 0.5) * (basePrice * 0.03); // +/- 3% fluctuation
 
   return {
     ticker: ticker,
@@ -123,20 +157,40 @@ export async function getMarketData(ticker: string): Promise<MarketData> {
 
 /**
  * Asynchronously submits an order for buying or selling a financial instrument.
+ * In a real app, this would interact with a broker's API.
  *
- * @param order The order to submit.
- * @returns A promise that resolves when the order is successfully submitted.
+ * @param order The order details to submit.
+ * @returns A promise that resolves to the submitted Order object, potentially updated with an ID and status from the broker.
  */
-export async function submitOrder(order: Order): Promise<void> {
+export async function submitOrder(order: Order): Promise<Order> {
   // TODO: Implement this by calling a real brokerage API to place the trade.
   // Ensure proper error handling and confirmation mechanisms are in place.
-  console.log(`Simulating order submission: ${order.type} ${order.quantity} shares of ${order.ticker}`);
-  await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
+  console.log(`Simulating order submission: ${order.type} ${order.quantity} shares of ${order.ticker} (${order.orderPriceType || 'market'})`);
+  await new Promise(resolve => setTimeout(resolve, 700)); // Simulate slightly longer network delay for orders
 
   // In a real scenario, you would handle the API response here.
-  // For example, confirming the order was filled or partially filled.
-  console.log(`Mock order for ${order.ticker} processed successfully.`);
-  return;
+  // The broker might return an order ID and initial status (e.g., 'pending' or 'accepted').
+  const submittedOrder: Order = {
+      ...order,
+      id: `mock_order_${Date.now()}_${Math.random().toString(16).substring(2, 8)}`, // Generate a mock ID
+      status: 'pending', // Initial status
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      orderPriceType: order.orderPriceType || 'market', // Default to market if not specified
+  };
+
+  console.log(`Mock order for ${order.ticker} submitted with ID: ${submittedOrder.id}. Status: ${submittedOrder.status}`);
+
+  // Simulate potential fill after a delay (optional, for more realism)
+  // setTimeout(async () => {
+  //    const finalStatus = Math.random() < 0.9 ? 'filled' : 'rejected'; // 90% success rate
+  //    console.log(`Mock order ${submittedOrder.id} status updated to: ${finalStatus}`);
+  //    // In a real app, you might update the order status via webhook or polling
+  //    // updateOrderStatus(submittedOrder.id, finalStatus, marketPrice);
+  // }, 2000);
+
+
+  return submittedOrder; // Return the submitted order details
 }
 
 /**
@@ -149,12 +203,14 @@ export async function getPositions(): Promise<Position[]> {
   console.log('Using mock data for getPositions');
   await new Promise(resolve => setTimeout(resolve, 400)); // Simulate network delay
 
-  // Example mock positions
+  // Example mock positions - Added more diverse holdings
   return [
-    { ticker: 'AAPL', quantity: 10, averagePrice: 145.00 },
-    { ticker: 'GOOGL', quantity: 5, averagePrice: 130.00 },
-    { ticker: 'VOO', quantity: 20, averagePrice: 480.50 },
-     { ticker: 'TSLA', quantity: 8, averagePrice: 170.25 },
+    { ticker: 'AAPL', quantity: 15, averagePrice: 165.50 },
+    { ticker: 'MSFT', quantity: 10, averagePrice: 400.00 },
+    { ticker: 'VOO', quantity: 30, averagePrice: 490.20 },
+    { ticker: 'TSLA', quantity: 5, averagePrice: 190.75 },
+    { ticker: 'AGG', quantity: 50, averagePrice: 97.10 },
+     { ticker: 'XOM', quantity: 25, averagePrice: 110.00 },
   ];
 }
 
@@ -185,25 +241,44 @@ export async function getPositions(): Promise<Position[]> {
        break;
      case '1y':
        startDate.setFullYear(endDate.getFullYear() - 1);
-       numPoints = 365;
+       numPoints = 252; // Trading days approximation
        break;
      default:
        startDate.setMonth(endDate.getMonth() - 1);
    }
 
    const data = [];
-   let currentValue = (await getMarketData(ticker)).price; // Start near current price
+   // Fetch a semi-realistic starting price based on current mocked price
+    const currentMarketData = await getMarketData(ticker);
+    let currentValue = currentMarketData.price;
+    // Adjust starting value based on range to simulate trend (very basic simulation)
+    if (range === '6m') currentValue *= (1 + (Math.random() - 0.6) * 0.15); // Wider fluctuation for 6m
+    if (range === '1y') currentValue *= (1 + (Math.random() - 0.6) * 0.25); // Wider fluctuation for 1y
+
+
    const timeDiff = endDate.getTime() - startDate.getTime();
 
    for (let i = 0; i < numPoints; i++) {
      const date = new Date(startDate.getTime() + (timeDiff * i) / numPoints);
-     currentValue += (Math.random() - 0.5) * (currentValue * 0.03); // Simulate daily fluctuation
-     currentValue = Math.max(currentValue, 0); // Ensure price doesn't go negative
+     // Simulate daily volatility - slightly higher for potentially more volatile stocks
+     const volatilityFactor = ['TSLA', 'NVDA'].includes(ticker) ? 0.04 : 0.025;
+     currentValue += (Math.random() - 0.5) * (currentValue * volatilityFactor);
+     currentValue = Math.max(currentValue, 1); // Ensure price doesn't go too low
+
+     // Add slight upward drift bias over time
+     currentValue *= 1.0001;
+
      data.push({
        date: date.toISOString().split('T')[0], // Format as YYYY-MM-DD
        value: parseFloat(currentValue.toFixed(2)),
      });
    }
+
+    // Ensure the last point is close to the current fetched price for consistency
+   if (data.length > 0) {
+       data[data.length - 1].value = currentMarketData.price;
+   }
+
 
    return data;
  }
@@ -217,3 +292,6 @@ export async function getPositions(): Promise<Position[]> {
 // - Functions for more complex order types (limit orders, stop-loss, etc.).
 // - Functions for managing watchlists.
 // - Authentication handling for brokerage APIs.
+// - Function to get order status by ID.
+// - Function to cancel an order.
+// - Function to fetch account balance / buying power.
