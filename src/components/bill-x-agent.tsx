@@ -1,4 +1,5 @@
 
+
 // @ts-nocheck
 'use client';
 
@@ -22,7 +23,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { Bot, DollarSign, TrendingUp, Zap, Info, BrainCircuit, Search, Check, Landmark, BarChart, Scale } from 'lucide-react'; // Added Gov icons
+import { Bot, DollarSign, TrendingUp, Zap, Info, BrainCircuit, Search, Check, Landmark, BarChart, Scale, AlertTriangle } from 'lucide-react'; // Added Gov icons, AlertTriangle
 import { useToast } from '@/hooks/use-toast';
 import { Slider } from '@/components/ui/slider';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -34,18 +35,20 @@ interface Strategy {
   id: string;
   title: string;
   description: string;
-  minInvestment: number; // Represents minimum allocation or risk unit
+  minInvestment: number; // Represents minimum conceptual allocation unit for this *type* of strategy
   icon: React.ElementType;
   riskProfile: 'Low' | 'Medium' | 'High'; // Add risk profile
 }
 
 // Define available strategies for governmental context
+// minInvestment represents a conceptual minimum allocation unit for the strategy execution,
+// not the minimum account balance required to *select* the strategy.
 const availableStrategies: Strategy[] = [
   {
     id: 'yield_curve_positioning',
     title: 'Yield Curve Positioning',
     description: 'Strategically allocates across different maturities (e.g., 2yr, 5yr, 10yr, 30yr) based on predicted curve shifts. Aims to capture gains from steepening, flattening, or inversions.',
-    minInvestment: 50, // Example allocation unit
+    minInvestment: 10, // Conceptual unit (e.g., $10M for institutions)
     icon: BarChart,
     riskProfile: 'Medium',
   },
@@ -53,7 +56,7 @@ const availableStrategies: Strategy[] = [
     id: 'sovereign_spread_trading',
     title: 'Sovereign Spread Trading',
     description: 'Identifies relative value opportunities by trading spreads between bonds of different countries (e.g., US vs. Germany) based on macroeconomic divergence.',
-    minInvestment: 100, // Higher complexity
+    minInvestment: 20, // Higher complexity (e.g., $20M)
     icon: Scale,
     riskProfile: 'Medium',
   },
@@ -61,7 +64,7 @@ const availableStrategies: Strategy[] = [
     id: 'inflation_protection',
     title: 'Inflation Protection Focus',
     description: 'Prioritizes inflation-linked bonds (e.g., TIPS) and short-duration instruments to mitigate inflation risk. Suitable for capital preservation in inflationary environments.',
-    minInvestment: 30,
+    minInvestment: 5, // e.g., $5M
     icon: Landmark,
     riskProfile: 'Low',
   },
@@ -69,7 +72,7 @@ const availableStrategies: Strategy[] = [
     id: 'duration_management',
     title: 'Active Duration Management',
     description: 'Adjusts portfolio duration based on interest rate forecasts. Increases duration if rates are expected to fall, decreases if rates are expected to rise.',
-    minInvestment: 75,
+    minInvestment: 15, // e.g., $15M
     icon: TrendingUp, // Can be up or down
     riskProfile: 'Medium',
   },
@@ -77,7 +80,7 @@ const availableStrategies: Strategy[] = [
     id: 'carry_trade_gov',
     title: 'Government Bond Carry Trade',
     description: 'Borrows in low-yield currencies/bonds to invest in higher-yielding government bonds, capturing the yield differential while managing currency and rate risk.',
-    minInvestment: 150, // Higher risk
+    minInvestment: 30, // Higher risk (e.g., $30M)
     icon: DollarSign,
     riskProfile: 'High',
   },
@@ -98,7 +101,7 @@ const StrategyDetail = ({ title, description, minInvestment, icon: Icon, riskPro
     </div>
     <p className="text-sm text-muted-foreground mb-2">{description}</p>
     <p className="text-xs font-medium">
-      Minimum Allocation Unit: <span className="text-primary">${minInvestment} M</span> {/* Assuming millions */}
+      Conceptual Minimum Allocation Unit: <span className="text-primary">${minInvestment} M</span> {/* Assuming millions for institutional context, even if user starts lower */}
     </p>
   </div>
 );
@@ -107,8 +110,8 @@ export default function BillXAgent() {
   const { toast } = useToast();
   const [isBillXEnabled, setIsBillXEnabled] = useState(false);
   const [automationLevel, setAutomationLevel] = useState<'strategy' | 'full'>('strategy');
-  const [selectedStrategyAmount, setSelectedStrategyAmount] = useState(50); // Default min unit
-  const [fullAutomationAmount, setFullAutomationAmount] = useState(300); // Min for full automation (e.g., $300M)
+  const [strategyAmount, setStrategyAmount] = useState(20); // Default min $20 for strategy mode
+  const [fullAutomationAmount, setFullAutomationAmount] = useState(300); // Min $300 for full automation
   const [selectedStrategies, setSelectedStrategies] = useState<string[]>([]);
 
   const [aiQuery, setAiQuery] = useState('');
@@ -117,17 +120,15 @@ export default function BillXAgent() {
   const [aiError, setAiError] = useState<string | null>(null);
 
   // --- State Fetching (Placeholder - Needs Backend) ---
-  // In a real app, fetch the agent's current state from the backend on mount
   useEffect(() => {
     const fetchAgentState = async () => {
         console.log("Fetching agent state from backend (Placeholder)...");
         try {
             // const response = await fetch('/api/agent/state'); // Your backend endpoint
-            // if (!response.ok) throw new Error('Failed to fetch state');
             // const state = await response.json();
             // setIsBillXEnabled(state.isEnabled);
             // setAutomationLevel(state.automationLevel);
-            // setSelectedStrategyAmount(state.strategyAmount || 50);
+            // setStrategyAmount(state.strategyAmount || 20); // Update default
             // setFullAutomationAmount(state.fullAmount || 300);
             // setSelectedStrategies(state.selectedStrategies || []);
             console.warn("Agent state fetching requires backend implementation.");
@@ -144,14 +145,8 @@ export default function BillXAgent() {
   const updateAgentBackendState = useCallback(async (newState: any) => {
       console.log("Updating agent state on backend (Placeholder)...", newState);
       try {
-          // const response = await fetch('/api/agent/update', { // Your backend endpoint
-          //     method: 'POST',
-          //     headers: { 'Content-Type': 'application/json', /* ...auth headers... */ },
-          //     body: JSON.stringify(newState),
-          // });
+          // const response = await fetch('/api/agent/update', { method: 'POST', ... });
           // if (!response.ok) throw new Error('Failed to update state');
-          // const result = await response.json();
-          // console.log("Backend update successful:", result);
           console.warn("Agent state update requires backend implementation.");
           return { success: true }; // Simulate success
       } catch (error) {
@@ -168,20 +163,18 @@ export default function BillXAgent() {
 
     if (enabled) {
       if (automationLevel === 'full' && fullAutomationAmount < 300) {
-        validationError = "Full account automation requires a minimum allocation of $300M.";
+        validationError = "Full account automation requires a minimum allocation of $300.";
         canProceed = false;
       } else if (automationLevel === 'strategy') {
-          if (selectedStrategies.length === 0) {
+          if (strategyAmount < 20) { // Check minimum for strategy mode
+              validationError = `Strategy-based automation requires a minimum allocation of $20.`;
+              canProceed = false;
+          } else if (selectedStrategies.length === 0) {
               validationError = "Please select at least one strategy before enabling strategy-based automation.";
               canProceed = false;
-          } else {
-              // Check if amount meets minimum for *all* selected strategies
-              const minRequired = Math.max(...selectedStrategies.map(id => availableStrategies.find(s => s.id === id)?.minInvestment || 0));
-              if (selectedStrategyAmount < minRequired) {
-                   validationError = `The selected amount ($${selectedStrategyAmount}M) is below the minimum required ($${minRequired}M) for one or more selected strategies.`;
-                   canProceed = false;
-              }
           }
+          // Note: We don't check against individual strategy minInvestment here, as that's a conceptual unit.
+          // The backend/agent logic will handle how to allocate the strategyAmount ($20+) across selected strategies.
       }
     }
 
@@ -195,9 +188,9 @@ export default function BillXAgent() {
     const updateSuccess = await updateAgentBackendState({
         isEnabled: enabled,
         automationLevel: automationLevel,
-        strategyAmount: selectedStrategyAmount,
+        strategyAmount: strategyAmount, // Use the state value
         fullAmount: fullAutomationAmount,
-        selectedStrategies: automationLevel === 'strategy' ? selectedStrategies : [], // Send relevant data
+        selectedStrategies: automationLevel === 'strategy' ? selectedStrategies : [],
     });
 
      if (updateSuccess.success) {
@@ -209,10 +202,9 @@ export default function BillXAgent() {
             : `AI agent is no longer managing investments.`,
         });
      } else {
-         // Revert UI state if backend update failed
          console.log("Reverting Bill X toggle due to backend failure.");
      }
-  }, [automationLevel, fullAutomationAmount, selectedStrategyAmount, selectedStrategies, toast, updateAgentBackendState]);
+  }, [automationLevel, fullAutomationAmount, strategyAmount, selectedStrategies, toast, updateAgentBackendState]);
 
   const handleAutomationLevelChange = useCallback(async (level: 'strategy' | 'full') => {
       let canProceed = true;
@@ -221,18 +213,15 @@ export default function BillXAgent() {
        // Validation if currently enabled
       if (isBillXEnabled) {
           if (level === 'full' && fullAutomationAmount < 300) {
-              validationError = "Switching to full automation requires a minimum of $300M. Adjust amount or disable first.";
+              validationError = "Switching to full automation requires a minimum of $300. Adjust amount or disable first.";
               canProceed = false;
           } else if (level === 'strategy') {
-              if (selectedStrategies.length === 0) {
+               if (strategyAmount < 20) {
+                   validationError = "Switching to strategy mode requires a minimum allocation of $20. Adjust amount or disable first.";
+                   canProceed = false;
+               } else if (selectedStrategies.length === 0) {
                   validationError = "Switching to strategy mode requires selecting strategies first.";
                    canProceed = false;
-              } else {
-                  const minRequired = Math.max(...selectedStrategies.map(id => availableStrategies.find(s => s.id === id)?.minInvestment || 0));
-                   if (selectedStrategyAmount < minRequired) {
-                       validationError = `Switching requires strategy amount >= $${minRequired}M. Adjust amount or disable first.`;
-                       canProceed = false;
-                   }
               }
           }
       }
@@ -247,7 +236,7 @@ export default function BillXAgent() {
             const updateSuccess = await updateAgentBackendState({
                  isEnabled: true, // Remains enabled
                  automationLevel: level,
-                 strategyAmount: selectedStrategyAmount,
+                 strategyAmount: strategyAmount,
                  fullAmount: fullAutomationAmount,
                  selectedStrategies: level === 'strategy' ? selectedStrategies : [],
              });
@@ -263,7 +252,7 @@ export default function BillXAgent() {
 
       setAutomationLevel(level); // Update UI state only after validation/backend success (if enabled)
 
-  }, [isBillXEnabled, fullAutomationAmount, selectedStrategyAmount, selectedStrategies, toast, updateAgentBackendState]);
+  }, [isBillXEnabled, fullAutomationAmount, strategyAmount, selectedStrategies, toast, updateAgentBackendState]);
 
 
    const handleStrategySelectionChange = useCallback((strategyId: string, checked: boolean) => {
@@ -282,23 +271,22 @@ export default function BillXAgent() {
             toast({ title: "Incorrect Mode", description: "Strategy selection only applies in 'Strategy-Based Automation' mode.", variant: "destructive"});
             return;
         }
+         if (strategyAmount < 20) {
+             toast({ title: "Amount Too Low", description: `Strategy-based automation requires at least $20.`, variant: "destructive"});
+            return;
+         }
         if (selectedStrategies.length === 0) {
              toast({ title: "No Strategy Selected", description: "Please select at least one strategy to apply.", variant: "destructive" });
             return;
         }
-       // Validate minimum amount for selected strategies *before* sending to backend
-       const minRequired = Math.max(...selectedStrategies.map(id => availableStrategies.find(s => s.id === id)?.minInvestment || 0));
-        if (selectedStrategyAmount < minRequired) {
-             toast({ title: "Amount Too Low", description: `The current amount ($${selectedStrategyAmount}M) is below the minimum ($${minRequired}M) required for the selected strategies.`, variant: "destructive"});
-            return;
-        }
+       // No longer need to validate against minInvestment here, as the entry threshold is $20
 
        // Attempt backend update
        const updateSuccess = await updateAgentBackendState({
             isEnabled: true,
             automationLevel: 'strategy',
-            strategyAmount: selectedStrategyAmount,
-            fullAmount: fullAutomationAmount, // Keep sending full amount context? Or nullify? Check backend needs
+            strategyAmount: strategyAmount,
+            fullAmount: fullAutomationAmount,
             selectedStrategies: selectedStrategies,
         });
 
@@ -309,9 +297,8 @@ export default function BillXAgent() {
             });
         } else {
              console.log("Backend update for strategies failed.");
-             // UI state for selectedStrategies is already updated, maybe revert if needed?
         }
-   }, [isBillXEnabled, selectedStrategies, toast, automationLevel, selectedStrategyAmount, updateAgentBackendState, fullAutomationAmount]);
+   }, [isBillXEnabled, selectedStrategies, toast, automationLevel, strategyAmount, updateAgentBackendState, fullAutomationAmount]);
 
 
    const handleAiQuery = async () => {
@@ -323,16 +310,14 @@ export default function BillXAgent() {
     try {
       const input: FinancialKnowledgeInput = { query: aiQuery };
       const output: FinancialKnowledgeOutput = await getFinancialKnowledge(input);
-      // Validate output structure (basic check)
       if (!output || typeof output.explanation !== 'string' || output.explanation.trim() === '') {
           throw new Error("AI returned an invalid or empty explanation.");
       }
       setAiResponse(output.explanation);
 
-    } catch (err) {
+    } catch (err: any) { // Changed catch signature
       console.error("AI Knowledge query failed:", err);
       let message = `Failed to get information. ${err instanceof Error ? err.message : 'Please try again.'}`;
-       // Add check for specific flow error messages if needed
       if (message.includes("AI response validation failed")) {
            message = "The AI failed to generate a valid explanation in the expected format. Please try rephrasing your query.";
        }
@@ -366,7 +351,7 @@ export default function BillXAgent() {
         <Card className="bg-gradient-to-br from-card to-secondary/30">
             <CardHeader>
                 <CardTitle>AI Automation Settings</CardTitle>
-                <CardDescription>Configure how Bill X manages governmental portfolios.</CardDescription>
+                <CardDescription>Configure how Bill X manages investments. Requires $20+ account value to enable.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
                 {!isBillXEnabled && (
@@ -374,7 +359,7 @@ export default function BillXAgent() {
                         <Info className="h-4 w-4 !text-primary" />
                         <AlertTitle>Bill X is Currently Disabled</AlertTitle>
                         <AlertDescription>
-                            Enable the switch above to allow Bill X to start managing investments based on your chosen settings. Requires backend setup.
+                             Enable the switch above to allow Bill X to start managing investments based on your chosen settings. Minimum $20 allocation required for Strategy Mode, $300 for Full Account Mode. Requires backend setup.
                         </AlertDescription>
                     </Alert>
                 )}
@@ -391,7 +376,7 @@ export default function BillXAgent() {
                                 <Zap className="w-5 h-5 mr-3" />
                                 <div>
                                     <p className="font-semibold">Strategy-Based Automation</p>
-                                    <p className="text-xs text-muted-foreground mt-1">Bill X executes based on selected governmental strategies (e.g., Yield Curve, Spreads).</p>
+                                    <p className="text-xs text-muted-foreground mt-1">Bill X executes based on selected governmental strategies. Minimum allocation: $20.</p>
                                 </div>
                             </div>
                         </Button>
@@ -404,7 +389,7 @@ export default function BillXAgent() {
                                 <TrendingUp className="w-5 h-5 mr-3" />
                                 <div>
                                     <p className="font-semibold">Full Account Automation</p>
-                                    <p className="text-xs text-muted-foreground mt-1">Bill X dynamically diversifies across multiple strategies for portfolio optimization.</p>
+                                    <p className="text-xs text-muted-foreground mt-1">Bill X dynamically diversifies across multiple strategies for portfolio optimization. Minimum allocation: $300.</p>
                                 </div>
                             </div>
                         </Button>
@@ -415,14 +400,14 @@ export default function BillXAgent() {
                 {automationLevel === 'strategy' && (
                     <div className="space-y-3 p-4 border rounded-md">
                         <Label htmlFor="strategy-amount" className="font-medium flex items-center">
-                            Allocation per Strategy Unit (Millions USD)
+                             Total Allocation for Strategy Mode (USD)
                              <TooltipProvider>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                          <Info className="h-3 w-3 text-muted-foreground ml-1.5 cursor-help" />
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                        <p>Set the base allocation unit Bill X uses for each selected strategy execution.</p>
+                                         <p>Set the total capital Bill X uses when executing the selected strategy/strategies.</p>
                                     </TooltipContent>
                                 </Tooltip>
                              </TooltipProvider>
@@ -430,18 +415,18 @@ export default function BillXAgent() {
                          <div className="flex items-center space-x-4">
                             <Slider
                                 id="strategy-amount"
-                                min={20} // Reflects lowest minInvestment from strategies
-                                max={1000} // Example max unit ($1B)
-                                step={10}
-                                value={[selectedStrategyAmount]}
-                                onValueChange={(value) => setSelectedStrategyAmount(value[0])}
+                                min={20} // Minimum required is $20
+                                max={299} // Up to the minimum for full automation
+                                step={1}
+                                value={[strategyAmount]}
+                                onValueChange={(value) => setStrategyAmount(value[0])}
                                 className="flex-1"
                                 disabled={isBillXEnabled}
-                                aria-label="Allocation amount per strategy unit in millions"
+                                aria-label="Total allocation amount for strategy-based automation in dollars"
                             />
-                            <span className="font-semibold text-primary w-24 text-right">${selectedStrategyAmount} M</span>
+                            <span className="font-semibold text-primary w-24 text-right">${strategyAmount}</span>
                         </div>
-                        <p className="text-xs text-muted-foreground">Minimum unit varies by strategy (check below). Min overall: $20M.</p>
+                        <p className="text-xs text-muted-foreground">Minimum $20 required for Strategy-Based Automation.</p>
                          {isBillXEnabled && <p className="text-xs text-destructive">Disable Bill X to change the allocation amount.</p>}
                     </div>
                 )}
@@ -449,7 +434,7 @@ export default function BillXAgent() {
                  {automationLevel === 'full' && (
                     <div className="space-y-3 p-4 border rounded-md">
                         <Label htmlFor="full-amount" className="font-medium flex items-center">
-                            Total Automation Allocation (Millions USD)
+                            Total Automation Allocation (USD)
                             <TooltipProvider>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
@@ -464,18 +449,18 @@ export default function BillXAgent() {
                          <div className="flex items-center space-x-4">
                             <Slider
                                 id="full-amount"
-                                min={300}
-                                max={10000} // Example max ($10B)
-                                step={100}
+                                min={300} // Minimum $300
+                                max={10000} // Example max ($10,000) - adjust as needed
+                                step={10}
                                 value={[fullAutomationAmount]}
                                 onValueChange={(value) => setFullAutomationAmount(value[0])}
                                 className="flex-1"
                                 disabled={isBillXEnabled}
-                                aria-label="Total amount for full automation in millions"
+                                aria-label="Total amount for full automation in dollars"
                             />
-                             <span className="font-semibold text-primary w-28 text-right">${fullAutomationAmount} M</span>
+                             <span className="font-semibold text-primary w-28 text-right">${fullAutomationAmount}</span>
                         </div>
-                        <p className="text-xs text-muted-foreground">Minimum $300M required for full account automation.</p>
+                        <p className="text-xs text-muted-foreground">Minimum $300 required for Full Account Automation.</p>
                          {isBillXEnabled && <p className="text-xs text-destructive">Disable Bill X to change the allocation amount.</p>}
                     </div>
                 )}
@@ -487,7 +472,7 @@ export default function BillXAgent() {
         <Card>
             <CardHeader>
                 <CardTitle>Bill X Governmental Strategies</CardTitle>
-                <CardDescription>Explore the AI-driven strategies Bill X can employ for sovereign instruments.</CardDescription>
+                <CardDescription>Explore the AI-driven strategies Bill X can employ. Select strategies for 'Strategy-Based Automation'.</CardDescription>
             </CardHeader>
             <CardContent>
                  <Accordion type="single" collapsible className="w-full">
@@ -506,7 +491,7 @@ export default function BillXAgent() {
                     <div className="mt-6 p-4 border rounded-md bg-background">
                         <h3 className="text-lg font-semibold mb-3">Select Strategies for Automation</h3>
                         <p className="text-sm text-muted-foreground mb-4">
-                            Choose one or more strategies for Bill X to manage with the allocated unit size (${selectedStrategyAmount}M per strategy execution).
+                             Choose one or more strategies for Bill X to manage with your allocated capital (${strategyAmount}).
                         </p>
                         <div className="space-y-3">
                              {availableStrategies.map((strategy) => (
@@ -523,7 +508,7 @@ export default function BillXAgent() {
                                         id={`label-strategy-${strategy.id}`}
                                         className="font-normal cursor-pointer"
                                     >
-                                        {strategy.title} <span className="text-xs text-muted-foreground">(Min Unit: ${strategy.minInvestment}M)</span>
+                                        {strategy.title} {/* Removed min unit display */}
                                     </Label>
                                 </div>
                             ))}
@@ -532,13 +517,14 @@ export default function BillXAgent() {
                         <Button
                             className="mt-4"
                             onClick={handleUpdateStrategies}
-                             // Enable only if Bill X is on, in strategy mode, and at least one strategy is selected
-                            disabled={!isBillXEnabled || automationLevel !== 'strategy' || selectedStrategies.length === 0}
+                             // Enable only if Bill X is on, in strategy mode, allocation >= $20, and at least one strategy is selected
+                            disabled={!isBillXEnabled || automationLevel !== 'strategy' || strategyAmount < 20 || selectedStrategies.length === 0}
                         >
                            {isBillXEnabled ? <><Check className="mr-2 h-4 w-4" /> Apply Selected Strategies</> : 'Enable Bill X to Apply'}
                         </Button>
                          {!isBillXEnabled && <p className="text-xs text-muted-foreground mt-2">Enable Bill X and select strategies to apply.</p>}
-                         {isBillXEnabled && automationLevel === 'strategy' && <p className="text-xs text-muted-foreground mt-2">Click "Apply Selected Strategies" to save changes.</p>}
+                         {isBillXEnabled && automationLevel === 'strategy' && strategyAmount < 20 && <p className="text-xs text-destructive mt-2">Minimum $20 required for strategy mode.</p>}
+                         {isBillXEnabled && automationLevel === 'strategy' && strategyAmount >= 20 && <p className="text-xs text-muted-foreground mt-2">Click "Apply Selected Strategies" to save changes.</p>}
                          {isBillXEnabled && automationLevel !== 'strategy' && <p className="text-xs text-muted-foreground mt-2">Switch to 'Strategy-Based Automation' to apply specific strategies.</p>}
                     </div>
                 )}
