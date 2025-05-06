@@ -118,7 +118,7 @@ const MOCK_API_DELAY_MS = {
     MEDIUM: 600, // Slightly increased delay
     SLOW: 900, // Slightly increased delay
 };
-const MOCK_API_ERROR_RATE = 0.03; // Reduced error rate to 3%
+const MOCK_API_ERROR_RATE = 0.01; // Reduced error rate to 1% for less disruption
 
 // --- Helper Functions ---
 /** Simulates network delay */
@@ -442,3 +442,4 @@ export async function getTopMovers(count: number = 5): Promise<{ gainers: Instru
 //   - Fetching account balance/buying power (getAccountDetails())
 //   - Managing watchlists
 //   - Fetching company profiles, news, analyst ratings etc.
+
