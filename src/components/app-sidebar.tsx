@@ -87,17 +87,17 @@ export default function AppSidebar() {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-               onClick={() => handleItemClick('performance', '/performance')} // Assuming a /performance route
+               onClick={() => handleItemClick('performance', '/performance')}
               isActive={activeItem === 'performance'}
               tooltip="Performance"
-               disabled // Disable temporarily if page not ready
+              // Removed disabled prop
             >
               <LineChart />
               <span>Performance</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton
+           <SidebarMenuItem>
+             <SidebarMenuButton
                onClick={() => handleItemClick('referrals', '/referrals')} // Assuming a /referrals route
               isActive={activeItem === 'referrals'}
               tooltip="Referrals"
