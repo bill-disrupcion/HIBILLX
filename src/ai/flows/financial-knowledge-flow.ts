@@ -10,12 +10,14 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 
-export const FinancialKnowledgeInputSchema = z.object({
+// Removed export from Zod schema
+const FinancialKnowledgeInputSchema = z.object({
   query: z.string().describe('The financial topic or question to ask the AI.'),
 });
 export type FinancialKnowledgeInput = z.infer<typeof FinancialKnowledgeInputSchema>;
 
-export const FinancialKnowledgeOutputSchema = z.object({
+// Removed export from Zod schema
+const FinancialKnowledgeOutputSchema = z.object({
   explanation: z.string().describe('A detailed explanation of the financial topic.'),
 });
 export type FinancialKnowledgeOutput = z.infer<typeof FinancialKnowledgeOutputSchema>;
