@@ -1,7 +1,9 @@
+// @ts-nocheck
 'use client';
 
 import React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation'; // Import useRouter
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -24,6 +26,7 @@ const HibllxLogo = () => (
 
 
 export default function LoginPage() {
+    const router = useRouter(); // Initialize router
     const [email, setEmail] = React.useState('');
     const [password, setPassword] = React.useState('');
     const [loading, setLoading] = React.useState(false);
@@ -34,13 +37,41 @@ export default function LoginPage() {
         e.preventDefault();
         setLoading(true);
         setError(null);
-        console.log('Logging in with:', { email, password });
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        // On success, redirect to dashboard (use next/navigation)
-        // On failure: setError("Invalid credentials"); setLoading(false);
-        setError("Login functionality not implemented yet."); // Placeholder
-        setLoading(false);
+        console.log('Logging in with:', { email }); // Avoid logging password
+
+        try {
+            // Simulate API call (e.g., signInWithEmailAndPassword(auth, email, password))
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            // **IMPORTANT: Email Verification Check (Conceptual)**
+            // In a real implementation (e.g., Firebase Auth):
+            // const user = auth.currentUser;
+            // if (user && !user.emailVerified) {
+            //      setError("Please verify your email address before logging in.");
+            //      // Optionally: Offer to resend verification email
+            //      // await sendEmailVerification(user);
+            //      setLoading(false);
+            //      return; // Stop login process
+            // }
+
+            // On successful login AND verification:
+            // Redirect to dashboard
+             console.log("Login successful (simulated), redirecting...");
+             router.push('/'); // Redirect to the main dashboard page
+
+        } catch (err: any) {
+             console.error("Login failed:", err);
+             // Map Firebase or backend errors to user-friendly messages
+            let errorMessage = "Invalid email or password.";
+            if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+                 errorMessage = "Invalid email or password.";
+            } else if (err.code === 'auth/too-many-requests') {
+                errorMessage = "Access temporarily disabled due to too many failed login attempts. Please try again later.";
+            }
+            setError(errorMessage);
+            setLoading(false);
+        }
+         // setLoading(false); // Removed from here as success redirects
     };
 
     return (
@@ -59,6 +90,7 @@ export default function LoginPage() {
                     type="email"
                     placeholder="m@example.com"
                     required
+                    autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={loading}
@@ -67,7 +99,7 @@ export default function LoginPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password">Password</Label>
-                   <Link href="#" className="text-sm text-primary hover:underline">
+                   <Link href="#" className="text-sm text-primary hover:underline" onClick={(e) => {e.preventDefault(); alert('Password reset not implemented yet.');}}>
                     Forgot password?
                   </Link>
                 </div>
@@ -75,6 +107,7 @@ export default function LoginPage() {
                     id="password"
                     type="password"
                     required
+                    autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={loading}

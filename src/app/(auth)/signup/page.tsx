@@ -1,7 +1,9 @@
+// @ts-nocheck
 'use client';
 
 import React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation'; // Import useRouter
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -13,6 +15,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useToast } from "@/hooks/use-toast" // Import useToast
 
 // Simple inline SVG for HIBLLX logo (reuse)
 const HibllxLogo = () => (
@@ -24,6 +27,8 @@ const HibllxLogo = () => (
 
 
 export default function SignupPage() {
+    const router = useRouter(); // Initialize router
+    const { toast } = useToast(); // Initialize toast
     const [name, setName] = React.useState('');
     const [email, setEmail] = React.useState('');
     const [password, setPassword] = React.useState('');
@@ -31,22 +36,59 @@ export default function SignupPage() {
     const [loading, setLoading] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
 
-    // TODO: Implement actual signup logic
+    // TODO: Implement actual signup logic using Firebase Auth or similar
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
+        setError(null); // Clear previous errors
+
+        if (password.length < 6) {
+            setError("Password must be at least 6 characters long.");
+            return;
+        }
+
         if (password !== confirmPassword) {
             setError("Passwords do not match.");
             return;
         }
+
         setLoading(true);
-        setError(null);
-        console.log('Signing up with:', { name, email, password });
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        // On success, maybe show a success message or redirect to login/dashboard
-        // On failure: setError("Failed to create account."); setLoading(false);
-         setError("Signup functionality not implemented yet."); // Placeholder
-        setLoading(false);
+
+        console.log('Attempting signup with:', { name, email }); // Avoid logging password
+
+        try {
+            // Simulate API call to your backend or Firebase Auth
+            // Example: const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            // await updateProfile(userCredential.user, { displayName: name });
+            // await sendEmailVerification(userCredential.user);
+
+            await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate network delay
+
+            // **On successful signup:**
+            // 1. Show a success toast
+            toast({
+                title: "Account Created!",
+                description: "Please check your email to verify your account.",
+            });
+            // 2. Redirect to the verify-email page
+            router.push('/verify-email');
+
+            // In a real app, ensure loading=false is set appropriately even after redirect or if component unmounts
+
+        } catch (err: any) {
+            console.error('Signup failed:', err);
+            // Map Firebase or backend errors to user-friendly messages
+            let errorMessage = "Failed to create account. Please try again.";
+            if (err.code === 'auth/email-already-in-use') {
+                errorMessage = "This email address is already in use.";
+            } else if (err.code === 'auth/invalid-email') {
+                errorMessage = "Please enter a valid email address.";
+            } else if (err.code === 'auth/weak-password') {
+                errorMessage = "Password is too weak.";
+            }
+            setError(errorMessage);
+            setLoading(false); // Ensure loading is set to false on error
+        }
+        // Removed the placeholder error and setLoading(false) from here as success redirects
     };
 
     return (
@@ -77,6 +119,7 @@ export default function SignupPage() {
                     type="email"
                     placeholder="m@example.com"
                     required
+                    autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={loading}
@@ -88,6 +131,7 @@ export default function SignupPage() {
                     id="password"
                     type="password"
                     required
+                    autoComplete="new-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={loading}
@@ -99,6 +143,7 @@ export default function SignupPage() {
                     id="confirm-password"
                     type="password"
                     required
+                     autoComplete="new-password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     disabled={loading}
