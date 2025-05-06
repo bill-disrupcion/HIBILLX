@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -13,16 +14,18 @@ import { Button } from '@/components/ui/button';
 import PortfolioOverview from './portfolio-overview'; // Shows current holdings
 import MarketOverview from './market-overview'; // Shows bond market, indices
 import { SidebarTrigger } from './ui/sidebar';
-import { Briefcase, Newspaper, Landmark, ArrowRightLeft, CircleDollarSign, AlertTriangle, BookOpen } from 'lucide-react'; // Use relevant icons
+import { Briefcase, Newspaper, Landmark, ArrowRightLeft, CircleDollarSign, AlertTriangle, BookOpen, Activity } from 'lucide-react'; // Added Activity
 import { useToast } from '@/hooks/use-toast';
-import { getAccountBalance, AccountBalance, getGovBondYields, GovBondYield } from '@/services/broker-api'; // Import account balance and bond yields
+import { getAccountBalance, AccountBalance, getGovBondYields, GovBondYield, ApiError, DataProviderError } from '@/services/broker-api'; // Import custom errors
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { DepositDialog } from './deposit-dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { summarizeMarketNews, SummarizeMarketNewsInput, SummarizeMarketNewsOutput } from '@/ai/flows/summarize-market-news'; // Import news summarizer
+import AiSuggestions from './ai-suggestions';
 
-// Placeholder components for other sections
+
+// Placeholder component for Investment Trading Options
 const InvestmentTradingOptions = () => (
   <Card>
     <CardHeader>
@@ -31,18 +34,19 @@ const InvestmentTradingOptions = () => (
     </CardHeader>
     <CardContent>
       <p className="text-sm text-muted-foreground italic">Real Broker API integration required for trading.</p>
-       {/* TODO: Add components for searching gov instruments, placing orders */}
        <div className="flex space-x-2 mt-4">
-            <Button variant="outline" disabled>Explore Bonds (Needs Impl)</Button>
-            <Button variant="outline" disabled>Place Order (Needs Impl)</Button>
+            <Button variant="outline" disabled title="Not implemented">Explore Bonds</Button>
+            <Button variant="outline" disabled title="Not implemented">Place Order</Button>
         </div>
     </CardContent>
   </Card>
 );
 
+// Market News Summary Component with Error Handling
 const MarketNewsSummary = () => {
+  const { toast } = useToast(); // Use toast for error notification
   const [summary, setSummary] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Start loading
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -50,7 +54,7 @@ const MarketNewsSummary = () => {
       setLoading(true);
       setError(null);
       try {
-        // TODO: Replace with actual news fetching mechanism
+        // TODO: Replace with actual news fetching mechanism (e.g., API call)
         const mockArticles = [
           "Central Bank signals potential rate hike amid inflation concerns.",
           "Government announces new 10-year bond auction.",
@@ -58,24 +62,44 @@ const MarketNewsSummary = () => {
           "Fiscal policy changes expected in upcoming budget announcement.",
           "Sovereign debt ratings updated for several emerging markets."
         ];
+        if (mockArticles.length === 0) {
+            // If no articles are found, set summary appropriately
+            setSummary("No recent market news articles found to summarize.");
+            return; // Exit early
+        }
         const input: SummarizeMarketNewsInput = { newsArticles: mockArticles };
         const result: SummarizeMarketNewsOutput = await summarizeMarketNews(input);
+
+        if (!result || !result.summary) {
+             throw new Error("AI failed to generate a news summary.");
+        }
         setSummary(result.summary);
       } catch (err: any) {
         console.error("Failed to summarize market news:", err);
-        setError(`Failed to load news summary: ${err.message || 'Check AI flow setup.'}`);
+        const errorMessage = `Failed to load news summary: ${err.message || 'Check AI flow setup.'}`;
+        setError(errorMessage);
         setSummary(null);
+        toast({ // Notify user of the error
+            variant: "destructive",
+            title: "News Summary Error",
+            description: errorMessage,
+        });
       } finally {
         setLoading(false);
       }
     };
-    // fetchSummary(); // Uncomment when ready to test/implement news source
-    // TEMP: Remove automatic fetch for now as it depends on external data/flow
-    setSummary("Market news summary requires API integration and AI flow setup. Example: Central banks considering rate hikes, new bond auctions announced.");
-    setLoading(false);
 
+     // Check if the flow exists or is properly configured before calling
+     if (typeof summarizeMarketNews === 'function') {
+        fetchSummary(); // Call fetchSummary only if the function exists
+     } else {
+         console.warn("summarizeMarketNews flow is not available.");
+         setError("News summarization feature is currently unavailable.");
+         setSummary(null);
+         setLoading(false);
+     }
 
-  }, []);
+  }, [toast]); // Add toast dependency
 
   return (
     <Card>
@@ -116,6 +140,7 @@ export default function Dashboard() {
 
     const [isDepositOpen, setIsDepositOpen] = useState(false);
 
+    // Fetch account balance with error handling
     useEffect(() => {
         const fetchBalance = async () => {
             setLoadingBalance(true);
@@ -125,14 +150,25 @@ export default function Dashboard() {
                 setAccountBalance(balance);
             } catch (err: any) {
                 console.error("Failed to fetch account balance:", err);
-                setBalanceError(`Failed to load balance: ${err.message || 'Check API configuration.'}`);
+                let errorMessage = `Failed to load balance.`;
+                if (err instanceof ApiError) {
+                    errorMessage = `${err.name}: ${err.message}`;
+                } else {
+                    errorMessage += ` ${err.message || 'Check API configuration.'}`;
+                }
+                setBalanceError(errorMessage);
                 setAccountBalance(null);
+                 toast({ // Notify user of balance fetch error
+                     variant: "destructive",
+                     title: "Balance Error",
+                     description: errorMessage,
+                 });
             } finally {
                 setLoadingBalance(false);
             }
         };
         fetchBalance();
-    }, []);
+    }, [toast]); // Add toast dependency
 
     const formatCurrency = useCallback((value: number | undefined, currency: string = 'USD') => {
         if (value === undefined || isNaN(value)) return '--.--';
@@ -145,17 +181,17 @@ export default function Dashboard() {
 
      const handleOpenTransfer = useCallback(() => {
         toast({
-            variant: "destructive",
+            variant: "destructive", // Use destructive for unimplemented features
             title: "Transfer Feature Not Implemented",
-            description: "Secure backend integration required for fund transfers."
+            description: "Secure backend integration is required for fund transfers."
         });
     }, [toast]);
 
      const handleOpenWithdraw = useCallback(() => {
         toast({
-            variant: "destructive",
+            variant: "destructive", // Use destructive for unimplemented features
             title: "Withdraw Feature Not Implemented",
-            description: "Secure backend integration required for fund withdrawals."
+            description: "Secure backend integration is required for fund withdrawals."
         });
     }, [toast]);
 
@@ -166,7 +202,10 @@ export default function Dashboard() {
       <header className="flex items-center justify-between pb-4 border-b">
         <div className="flex items-center space-x-2">
            <SidebarTrigger className="md:hidden"/>
-           <h1 className="text-2xl font-semibold text-foreground">Governmental Trading Dashboard</h1>
+           <h1 className="text-2xl font-semibold text-foreground flex items-center">
+                <Activity className="mr-3 h-6 w-6 text-primary" /> {/* Use relevant icon */}
+                Governmental Trading Dashboard
+           </h1>
         </div>
          <div className="text-right">
               <p className="text-xs text-muted-foreground">Institutional Account Balance</p>
@@ -177,7 +216,7 @@ export default function Dashboard() {
                       <Tooltip>
                           <TooltipTrigger asChild>
                                <span className="text-sm font-semibold text-destructive flex items-center justify-end cursor-help">
-                                   <AlertTriangle className="h-4 w-4 mr-1"/> Error
+                                   <AlertTriangle className="h-4 w-4 mr-1"/> Error Loading Balance
                                </span>
                           </TooltipTrigger>
                           <TooltipContent>
@@ -195,31 +234,36 @@ export default function Dashboard() {
 
       <main className="grid gap-6 grid-cols-1 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
+           {/* Portfolio Overview handles its own loading/error states */}
            <PortfolioOverview />
-           <MarketOverview /> {/* Will show bond market / yield curves */}
-           <InvestmentTradingOptions />
+           {/* Market Overview handles its own loading/error states */}
+           <MarketOverview />
+           {/* InvestmentTradingOptions can be uncommented if/when implemented */}
+           {/* <InvestmentTradingOptions /> */}
+           <AiSuggestions /> {/* AI Suggestions component added here */}
         </div>
 
         <div className="lg:col-span-1 space-y-6">
            <Card>
                 <CardHeader>
-                    <CardTitle>Treasury Operations</CardTitle>
+                    <CardTitle className="flex items-center"><Landmark className="mr-2 h-5 w-5 text-primary"/> Treasury Operations</CardTitle>
                     <CardDescription>Manage institutional funds. Requires backend setup.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                     <Button className="w-full" onClick={handleOpenDeposit}>
                         <Landmark className="mr-2 h-4 w-4" /> Deposit Funds
                     </Button>
-                     <Button className="w-full" variant="outline" onClick={handleOpenTransfer} disabled>
-                         <ArrowRightLeft className="mr-2 h-4 w-4" /> Transfer Funds (Needs Backend)
+                     <Button className="w-full" variant="outline" onClick={handleOpenTransfer} disabled title="Not implemented">
+                         <ArrowRightLeft className="mr-2 h-4 w-4" /> Transfer Funds
                      </Button>
-                     <Button className="w-full" variant="outline" onClick={handleOpenWithdraw} disabled>
-                        <CircleDollarSign className="mr-2 h-4 w-4" /> Withdraw Funds (Needs Backend)
+                     <Button className="w-full" variant="outline" onClick={handleOpenWithdraw} disabled title="Not implemented">
+                        <CircleDollarSign className="mr-2 h-4 w-4" /> Withdraw Funds
                      </Button>
-                     <p className="text-xs text-muted-foreground text-center pt-2">Secure backend implementation required.</p>
+                     <p className="text-xs text-muted-foreground text-center pt-2">Requires secure backend implementation.</p>
                 </CardContent>
            </Card>
 
+           {/* Market News Summary handles its own loading/error states */}
            <MarketNewsSummary />
 
             {/* Financial Knowledge Hub Access Point */}
@@ -248,3 +292,5 @@ export default function Dashboard() {
     </>
   );
 }
+
+    

@@ -1,52 +1,68 @@
 
+
 /**
  * @fileoverview Interacts with brokerage and financial data APIs.
- * This version contains placeholders for real API integration.
- * Actual implementation requires API keys and potentially SDKs for the chosen broker and financial data provider.
+ * Enhanced with error handling, validation, and risk mitigation concepts.
+ * Actual implementation requires API keys, SDKs, and robust backend infrastructure.
  */
 
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { z } from 'zod'; // Import zod for validation
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// --- Custom Error Types ---
+/** Base class for custom API errors */
+export class ApiError extends Error {
+  constructor(message: string, public cause?: Error) {
+    super(message);
+    this.name = this.constructor.name;
+  }
+}
+
+/** Error related to broker connection or availability */
+export class BrokerConnectionError extends ApiError {}
+
+/** Error related to data validation (input or received) */
+export class ValidationError extends ApiError {}
+
+/** Error related to unexpected market conditions (e.g., halted) */
+export class MarketConditionError extends ApiError {}
+
+/** Error related to compliance or regulatory issues */
+export class ComplianceError extends ApiError {}
+
+/** Error related to insufficient permissions or authentication */
+export class AuthorizationError extends ApiError {}
+
+/** Error related to external data provider issues */
+export class DataProviderError extends ApiError {}
+
+
 // --- Constants ---
-// Introduce a small chance of simulated API errors for mock data
+// Keep MOCK_API_ERROR_RATE low or zero for testing real integration points
 const MOCK_API_ERROR_RATE = 0.0; // Set to 0 to disable simulated errors during development
 
 /**
  * Represents a financial instrument.
  */
 export interface Instrument {
-  /**
-   * The ticker symbol of the instrument (e.g., AAPL, GOOGL, US10Y).
-   */
+  /** The ticker symbol of the instrument (e.g., AAPL, GOOGL, US10Y). */
   ticker: string;
-  /**
-   * The name of the company or asset.
-   */
+  /** The name of the company or asset. */
   name: string;
-  /**
-   * Optional: Current price (can be added when fetching movers).
-   */
+  /** Optional: Current price (can be added when fetching movers). */
   price?: number;
-  /**
-   * Optional: Price change percentage (can be added when fetching movers).
-   */
+  /** Optional: Price change percentage (can be added when fetching movers). */
   changePercent?: number;
-  /**
-   * Optional: Asset type, crucial for governmental context.
-   */
+  /** Optional: Asset type, crucial for governmental context. */
   asset_type?: AssetType;
-  /**
-    * Optional: Country of issuance.
-    */
+  /** Optional: Country of issuance. */
   country?: string;
-   /**
-   * Optional: Maturity date for bonds.
-   */
+   /** Optional: Maturity date for bonds. */
   maturity_date?: Date;
 }
 
@@ -54,114 +70,61 @@ export interface Instrument {
  * Represents market data for a financial instrument.
  */
 export interface MarketData {
-  /**
-   * The ticker symbol of the instrument.
-   */
+  /** The ticker symbol of the instrument. */
   ticker: string;
-  /**
-   * The current price OR yield of the instrument.
-   * For bonds/yields, this might represent the yield percentage.
-   */
+  /** The current price OR yield of the instrument. */
   price: number; // Can represent price or yield
-  /**
-   * The timestamp of the market data.
-   */
+  /** The timestamp of the market data. */
   timestamp: Date;
-  /**
-   * Optional: Previous closing price/yield.
-   */
+  /** Optional: Previous closing price/yield. */
   previousClose?: number;
-   /**
-   * Optional: Calculated price/yield change value.
-   */
+   /** Optional: Calculated price/yield change value. */
    changeValue?: number;
-   /**
-    * Optional: Calculated price/yield change percentage.
-    */
+   /** Optional: Calculated price/yield change percentage. */
    changePercent?: number;
-   /**
-    * Optional: Bid price/yield.
-    */
+   /** Optional: Bid price/yield. */
    bid?: number;
-   /**
-    * Optional: Ask price/yield.
-    */
+   /** Optional: Ask price/yield. */
    ask?: number;
-   /**
-    * Optional: Trading volume.
-    */
+   /** Optional: Trading volume. */
    volume?: number;
-    /**
-    * Optional: Yield value (if price represents price).
-    */
+    /** Optional: Yield value (if price represents price). */
    yield_value?: number;
-   /**
-   * Optional: Maturity date for bonds.
-   */
+   /** Optional: Maturity date for bonds. */
    maturity_date?: Date;
-    /**
-    * Optional: Bond duration.
-    */
+    /** Optional: Bond duration. */
    duration?: number;
-    /**
-    * Optional: Bond convexity.
-    */
+    /** Optional: Bond convexity. */
    convexity?: number;
-
 }
+
+// Zod schema for basic Order validation
+const OrderSchema = z.object({
+  ticker: z.string().min(1, "Ticker symbol is required."),
+  quantity: z.number().positive("Quantity must be a positive number."),
+  type: z.enum(['buy', 'sell']),
+  orderPriceType: z.enum(['market', 'limit']).optional(),
+  limitPrice: z.number().optional(),
+  time_in_force: z.string().optional(),
+  // Add other fields as needed
+});
 
 /**
  * Represents an order for buying or selling a financial instrument.
  */
-export interface Order {
-  /**
-   * Optional unique ID for the order (assigned by broker).
-   */
+export interface Order extends z.infer<typeof OrderSchema> {
+  /** Optional unique ID for the order (assigned by broker). */
   id?: string;
-  /**
-   * The ticker symbol of the instrument.
-   */
-  ticker: string;
-  /**
-   * The quantity (shares, contracts, or face value for bonds).
-   */
-  quantity: number;
-  /**
-   * The order type (e.g., buy, sell).
-   */
-  type: 'buy' | 'sell';
-  /**
-   * The type of order (e.g., market, limit). Defaults to market.
-   */
-  orderPriceType?: 'market' | 'limit';
-   /**
-   * The limit price (or yield for some bond orders), if orderPriceType is 'limit'.
-   */
-  limitPrice?: number;
-   /**
-   * Optional: Broker identifier if routing is needed.
-   */
-  broker_id?: string;
-  /**
-   * The status of the order (e.g., pending, filled, cancelled).
-   */
+  /** The status of the order (e.g., pending, filled, cancelled). */
   status?: 'pending' | 'filled' | 'partially_filled' | 'cancelled' | 'rejected' | 'accepted' | 'new';
-  /**
-   * The timestamp when the order was created or submitted.
-   */
+  /** The timestamp when the order was created or submitted. */
   createdAt?: Date;
-    /**
-   * The timestamp when the order was last updated (e.g., filled).
-   */
+  /** The timestamp when the order was last updated (e.g., filled). */
   updatedAt?: Date;
-   /**
-    * Optional: Identifier for the strategy that generated the order.
-    */
+   /** Optional: Identifier for the strategy that generated the order. */
   strategy_id?: string;
-   /**
-    * Time in force for the order (e.g., 'DAY', 'GTC').
-    */
-   time_in_force?: string;
+   /** Optional: Broker identifier if routing is needed. */
+  broker_id?: string;
 }
 
 /**
@@ -182,68 +145,46 @@ export enum AssetType {
  * Represents the current position of an instrument in the portfolio.
  */
 export interface Position {
-  /**
-   * The ticker symbol of the instrument.
-   */
+  /** The ticker symbol of the instrument. */
   ticker: string;
-  /**
-   * The quantity held (shares, contracts, face value).
-   */
+  /** The quantity held (shares, contracts, face value). */
   quantity: number;
-  /**
-   * The average price/yield at which the position was acquired.
-   */
+  /** The average price/yield at which the position was acquired. */
   averagePrice: number; // Can be price or avg yield basis
-   /**
-   * Optional: Current market price/yield. Added dynamically or from broker.
-   */
+   /** Optional: Current market price/yield. Added dynamically or from broker. */
   current_price?: number;
-   /**
-    * Optional: Yield value if current_price is price. Added dynamically or from broker.
-    */
+   /** Optional: Yield value if current_price is price. Added dynamically or from broker. */
    yield_value?: number;
-   /**
-   * Optional: Current market value. Added dynamically or from broker.
-   */
+   /** Optional: Current market value. Added dynamically or from broker. */
   market_value?: number;
-   /**
-   * Optional: Unrealized profit or loss. Added dynamically or from broker.
-   */
-  unrealized_pnl?: number;
-   /**
-   * Optional: Realized profit or loss (from closed portions). Provided by broker.
-   */
+   /** Optional: Unrealized profit or loss. Added dynamically or from broker. */
+   unrealized_pnl?: number;
+   /** Optional: Realized profit or loss (from closed portions). Provided by broker. */
   realized_pnl?: number;
-  /**
-   * Optional: Type of the asset.
-   */
+  /** Optional: Type of the asset. */
   asset_type?: AssetType;
-  /**
-   * Optional: Country of issuance for bonds.
-   */
+  /** Optional: Country of issuance for bonds. */
   country?: string;
-   /**
-   * Optional: Maturity date for bonds.
-   */
+   /** Optional: Maturity date for bonds. */
    maturity_date?: Date;
-   /**
-    * Optional: Current duration for bonds. Added dynamically or from broker.
-    */
+   /** Optional: Current duration for bonds. Added dynamically or from broker. */
    duration?: number;
 }
+
+// Zod schema for DepositDetails validation
+const DepositDetailsSchema = z.object({
+    amount: z.number().positive({ message: "Deposit amount must be positive." }).min(5, { message: "Minimum deposit is $5."}),
+    method: z.enum(["bank_transfer", "card", "nequi", "daviplata", "paypal"]),
+    currency: z.string().length(3, "Currency code must be 3 characters."), // Basic validation
+    payment_token: z.string().optional(),
+    reference_number: z.string().optional(),
+    customer_identifier: z.string().optional(),
+});
 
 /**
  * Represents details for a deposit transaction (includes common consumer methods).
  */
- export interface DepositDetails {
-    amount: number;
-    method: 'bank_transfer' | 'card' | 'nequi' | 'daviplata' | 'paypal'; // Updated methods
-    currency: string; // e.g., 'USD', 'EUR', 'COP'
-    // Payment processor specific details (e.g., token, source ID) would be added by the frontend/backend interaction
-    payment_token?: string; // e.g., Stripe token, PayPal order ID
-    reference_number?: string; // Optional internal reference
-    customer_identifier?: string; // e.g., phone number for Nequi/Daviplata
-}
+ export interface DepositDetails extends z.infer<typeof DepositDetailsSchema> {}
 
 
 /**
@@ -303,82 +244,71 @@ export interface GovBondYield {
 
 
 // --- Real API Configuration (Placeholders - Requires .env setup) ---
-// These MUST be set in your environment variables (.env.local or server environment)
 const REAL_BROKER_API_KEY = process.env.REAL_BROKER_API_KEY;
 const REAL_BROKER_SECRET_KEY = process.env.REAL_BROKER_SECRET_KEY;
-const REAL_BROKER_API_ENDPOINT = process.env.REAL_BROKER_API_ENDPOINT; // e.g., https://paper-api.alpaca.markets or https://api.alpaca.markets
+const REAL_BROKER_API_ENDPOINT = process.env.REAL_BROKER_API_ENDPOINT; // e.g., https://paper-api.alpaca.markets
 
-const REAL_FINANCIAL_DATA_PROVIDER = process.env.REAL_FINANCIAL_DATA_PROVIDER || 'polygon'; // Example: polygon, alphavantage, etc.
+const REAL_FINANCIAL_DATA_PROVIDER = process.env.REAL_FINANCIAL_DATA_PROVIDER || 'polygon';
 const REAL_FINANCIAL_DATA_API_KEY = process.env.REAL_FINANCIAL_DATA_API_KEY;
 const REAL_FINANCIAL_DATA_API_ENDPOINT = process.env.REAL_FINANCIAL_DATA_API_ENDPOINT; // e.g., https://api.polygon.io
 
-// Backend endpoint for secure operations like payments
-const NEXT_PUBLIC_BACKEND_API_ENDPOINT = process.env.NEXT_PUBLIC_BACKEND_API_ENDPOINT; // e.g., Your Cloud Function URL
+const NEXT_PUBLIC_BACKEND_API_ENDPOINT = process.env.NEXT_PUBLIC_BACKEND_API_ENDPOINT;
 
-// Environment variable to force using mock data (e.g., for development without API keys)
-// Set to 'false' in .env.local or environment to attempt real API calls.
 const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API !== 'false';
-
 
 // Helper function to simulate potential API errors when using mock data
 const simulateError = (message: string): void => {
-  if (USE_MOCK_API && Math.random() < MOCK_API_ERROR_RATE) {
+  if (USE_MOCK_API && MOCK_API_ERROR_RATE > 0 && Math.random() < MOCK_API_ERROR_RATE) {
     console.warn(`Simulating API Error: ${message}`);
     throw new Error(`Simulated API Error: ${message}`);
   }
 };
-
 
 // --- API Functions ---
 
 // --- Financial Data Functions ---
 
 /**
- * Asynchronously retrieves a list of relevant financial instruments (gov bonds, indices).
- * In a real app, this should fetch from a financial data provider or the broker.
+ * Asynchronously retrieves a list of relevant financial instruments.
+ * Enhanced with basic validation and error handling.
  *
  * @returns A promise that resolves to an array of Instrument objects.
- * @throws {Error} If the API call fails or is not implemented.
+ * @throws {DataProviderError} If the external API call fails.
+ * @throws {ApiError} For other unexpected errors.
  */
 export async function getInstruments(): Promise<Instrument[]> {
-    console.log('API Call: getInstruments');
+    const operation = 'getInstruments';
+    console.log(`API Call: ${operation}`);
     simulateError('Failed to fetch instruments list.');
 
     if (!USE_MOCK_API) {
-        console.log("Attempting REAL API call for getInstruments");
-        // ** REAL API INTEGRATION POINT (Financial Data Provider or Broker) **
+        console.log(`Attempting REAL API call for ${operation}`);
         if (!REAL_FINANCIAL_DATA_API_ENDPOINT || !REAL_FINANCIAL_DATA_API_KEY) {
-            console.error("Real Financial Data API endpoint or key not configured in .env");
-            throw new Error("Financial Data API not configured for getInstruments.");
+            console.error(`${operation}: Real Financial Data API endpoint or key not configured in .env`);
+            throw new DataProviderError("Financial Data API not configured.");
         }
         try {
-             // Example using fetch for Polygon.io reference tickers (adjust as needed)
              let apiUrl = `${REAL_FINANCIAL_DATA_API_ENDPOINT}/v3/reference/tickers?active=true&market=stocks&limit=1000&apiKey=${REAL_FINANCIAL_DATA_API_KEY}`;
-              // Add bond/rates specific query params if provider supports it, or make separate calls
-             // let bondApiUrl = `${REAL_FINANCIAL_DATA_API_ENDPOINT}/v3/reference/tickers?active=true&market=indices&type=CS&limit=100&apiKey=${REAL_FINANCIAL_DATA_API_KEY}`; // Example for indices
-
              const response = await fetch(apiUrl);
-             // const bondResponse = await fetch(bondApiUrl);
 
-             if (!response.ok) throw new Error(`API Error fetching stock tickers: ${response.status} ${response.statusText}`);
-             // if (!bondResponse.ok) console.warn(`API Error fetching bond tickers: ${bondResponse.status}`);
+             if (!response.ok) {
+                 const errorText = await response.text().catch(() => response.statusText);
+                 throw new DataProviderError(`API Error fetching stock tickers: ${response.status} ${errorText}`);
+            }
 
              const stockData = await response.json();
-             // const bondData = bondResponse.ok ? await bondResponse.json() : { results: [] };
-
              let instruments: Instrument[] = [];
 
              if (stockData && stockData.results) {
                  instruments = instruments.concat(stockData.results
-                    .filter((asset: any) => ['CS', 'ETF'].includes(asset.type) || (asset.ticker?.startsWith('^') || ['SPY', 'QQQ', 'DIA', 'AGG', 'GOVT', 'BND', 'TIP'].includes(asset.ticker)) ) // Filter for relevant indices/ETFs
+                    .filter((asset: any) => ['CS', 'ETF'].includes(asset.type) || (asset.ticker?.startsWith('^') || ['SPY', 'QQQ', 'DIA', 'AGG', 'GOVT', 'BND', 'TIP'].includes(asset.ticker)) )
                     .map((asset: any) => ({
                         ticker: asset.ticker,
                         name: asset.name,
-                        asset_type: asset.type === 'ETF' ? AssetType.STOCK_INDEX_ETF : asset.ticker === 'TIP' ? AssetType.INFLATION_LINKED : AssetType.OTHER, // Basic type mapping
+                        asset_type: asset.type === 'ETF' ? AssetType.STOCK_INDEX_ETF : asset.ticker === 'TIP' ? AssetType.INFLATION_LINKED : AssetType.OTHER,
                     })));
              }
 
-            // Manually add key treasury yield tickers if not returned by API easily
             const manualYields = [
                  { ticker: '^FVX', name: '5-Year Treasury Yield', asset_type: AssetType.OTHER, country: 'US' },
                  { ticker: '^TNX', name: '10-Year Treasury Yield', asset_type: AssetType.OTHER, country: 'US' },
@@ -386,20 +316,17 @@ export async function getInstruments(): Promise<Instrument[]> {
              ];
             instruments = instruments.concat(manualYields.filter(my => !instruments.some(i => i.ticker === my.ticker)));
 
-             // TODO: Add logic to fetch actual sovereign bond tickers if needed/possible from provider
-             // e.g., Search for CUSIPs or specific bond identifiers
-
-             console.log(`getInstruments: Fetched ${instruments.length} relevant instruments from REAL API.`);
-             return instruments;
+            console.log(`${operation}: Fetched ${instruments.length} relevant instruments from REAL API.`);
+            return instruments;
 
         } catch (error: any) {
-            console.error("Error fetching instruments from real API:", error);
-            throw new Error(`Failed to fetch instruments: ${error.message}`);
+            console.error(`Error in ${operation} from real API:`, error);
+            if (error instanceof DataProviderError) throw error;
+            throw new ApiError(`Failed to fetch instruments: ${error.message}`, error);
         }
     } else {
-        console.warn("getInstruments: Using MOCK data. Set NEXT_PUBLIC_USE_MOCK_API=false in .env for real data.");
-        await new Promise(resolve => setTimeout(resolve, 300)); // Simulate network delay
-         // Return a mix of relevant mock instruments
+        console.warn(`${operation}: Using MOCK data.`);
+        await new Promise(resolve => setTimeout(resolve, 300));
          return [
              { ticker: '^FVX', name: '5-Year Treasury Yield', asset_type: AssetType.OTHER, country: 'US' },
              { ticker: '^TNX', name: '10-Year Treasury Yield', asset_type: AssetType.OTHER, country: 'US' },
@@ -416,34 +343,33 @@ export async function getInstruments(): Promise<Instrument[]> {
 
 /**
  * Asynchronously retrieves real-time or near real-time market data for a given instrument.
+ * Enhanced with basic validation and error handling.
  *
  * @param ticker The ticker symbol of the instrument.
  * @returns A promise that resolves to a MarketData object.
- * @throws {Error} If the API call fails or is not implemented.
+ * @throws {ValidationError} If the ticker is invalid.
+ * @throws {DataProviderError} If the external API call fails.
+ * @throws {ApiError} For other unexpected errors.
  */
 export async function getMarketData(ticker: string): Promise<MarketData> {
-    console.log(`API Call: getMarketData(${ticker})`);
+    const operation = `getMarketData(${ticker})`;
+    console.log(`API Call: ${operation}`);
+
+    // Input validation
+    if (!ticker || typeof ticker !== 'string' || ticker.trim().length === 0) {
+        throw new ValidationError("Invalid ticker symbol provided.");
+    }
+
     simulateError(`Failed to fetch market data for ${ticker}.`);
 
      if (!USE_MOCK_API) {
-        console.log(`Attempting REAL API call for getMarketData(${ticker}) (Provider: ${REAL_FINANCIAL_DATA_PROVIDER})`);
+        console.log(`Attempting REAL API call for ${operation} (Provider: ${REAL_FINANCIAL_DATA_PROVIDER})`);
         if (!REAL_FINANCIAL_DATA_API_ENDPOINT || !REAL_FINANCIAL_DATA_API_KEY) {
-            console.error("Real Financial Data API endpoint or key not configured in .env");
-            throw new Error("Financial Data API not configured for getMarketData.");
+            console.error(`${operation}: Real Financial Data API endpoint or key not configured.`);
+            throw new DataProviderError("Financial Data API not configured.");
         }
         try {
-             // Example using fetch for Polygon.io (adjust based on provider)
-             const isYieldIndex = ticker.startsWith('^');
-             let priceField = 'c'; // Default to close price from aggregates if quotes fail
-             let priceMultiplier = 1;
-             // For Polygon, index values are usually in the 'v' field of snapshot/aggregates
-             // if (isYieldIndex) priceField = 'v';
-
-             // 1. Try Snapshot endpoint first for most recent data (includes bid/ask)
              const snapshotUrl = `${REAL_FINANCIAL_DATA_API_ENDPOINT}/v2/snapshot/locale/us/markets/stocks/tickers/${ticker}?apiKey=${REAL_FINANCIAL_DATA_API_KEY}`;
-             // Add equivalent snapshot for indices if provider has one
-             // const indexSnapshotUrl = `${REAL_FINANCIAL_DATA_API_ENDPOINT}/v2/snapshot/locale/global/markets/indices/tickers/${ticker}?apiKey=${REAL_FINANCIAL_DATA_API_KEY}`;
-
              let currentPrice: number | undefined;
              let bid: number | undefined;
              let ask: number | undefined;
@@ -457,68 +383,69 @@ export async function getMarketData(ticker: string): Promise<MarketData> {
                  const snapshotResponse = await fetch(snapshotUrl);
                  if (snapshotResponse.ok) {
                      const snapshotData = await snapshotResponse.json();
-                     if (snapshotData.ticker && snapshotData.ticker.lastTrade) {
-                         currentPrice = snapshotData.ticker.lastTrade.p;
-                         timestamp = new Date(snapshotData.ticker.lastTrade.t);
-                     } else if (snapshotData.ticker && snapshotData.ticker.lastQuote) {
-                         // Fallback to quote if no trade data
-                         currentPrice = (snapshotData.ticker.lastQuote.bP + snapshotData.ticker.lastQuote.aP) / 2; // Mid-price
-                         bid = snapshotData.ticker.lastQuote.bP;
-                         ask = snapshotData.ticker.lastQuote.aP;
-                         timestamp = new Date(snapshotData.ticker.lastQuote.t);
-                     }
-                     if (snapshotData.ticker && snapshotData.ticker.day) {
-                         volume = snapshotData.ticker.day.v;
-                         // Use previous close from snapshot if available
-                         previousClose = snapshotData.ticker.prevDay?.c;
-                         changeValue = snapshotData.ticker.todaysChange;
-                         changePercent = snapshotData.ticker.todaysChangePerc;
-                     }
-                     timestamp = timestamp || new Date(snapshotData.ticker.updated);
-
-                 }
-             } catch (snapError) {
-                 console.warn(`Snapshot API failed for ${ticker}, trying aggregates: ${snapError}`);
-             }
-
-
-             // 2. Fallback to Previous Day Close + Daily Change if snapshot failed or incomplete
-             if (currentPrice === undefined || previousClose === undefined) {
-                 const prevCloseUrl = `${REAL_FINANCIAL_DATA_API_ENDPOINT}/v2/aggs/ticker/${ticker}/prev?adjusted=true&apiKey=${REAL_FINANCIAL_DATA_API_KEY}`;
-                 const prevCloseResponse = await fetch(prevCloseUrl);
-                 if (prevCloseResponse.ok) {
-                     const prevCloseData = await prevCloseResponse.json();
-                     if (prevCloseData?.results?.length > 0) {
-                         const prevAgg = prevCloseData.results[0];
-                         if (currentPrice === undefined) { // Only use previous close as current price if snapshot failed completely
-                             currentPrice = prevAgg.c;
-                             timestamp = new Date(prevAgg.t);
-                         }
-                         if (previousClose === undefined) {
-                             previousClose = prevAgg.c; // Previous close
-                         }
-                         if (changeValue === undefined && previousClose !== undefined && currentPrice !== undefined) {
-                            changeValue = currentPrice - previousClose;
-                         }
-                          if (changePercent === undefined && previousClose !== undefined && previousClose !== 0 && changeValue !== undefined) {
-                             changePercent = (changeValue / previousClose) * 100;
-                         }
-                         if (volume === undefined) volume = prevAgg.v; // Use previous day volume if no daily available
-
-                     }
+                     const tickerData = snapshotData.ticker;
+                     if (tickerData) {
+                        if (tickerData.lastTrade) {
+                            currentPrice = tickerData.lastTrade.p;
+                            timestamp = new Date(tickerData.lastTrade.t);
+                        } else if (tickerData.lastQuote) {
+                            currentPrice = (tickerData.lastQuote.bP + tickerData.lastQuote.aP) / 2;
+                            bid = tickerData.lastQuote.bP;
+                            ask = tickerData.lastQuote.aP;
+                            timestamp = new Date(tickerData.lastQuote.t);
+                        }
+                        if (tickerData.day) {
+                            volume = tickerData.day.v;
+                            previousClose = tickerData.prevDay?.c;
+                            changeValue = tickerData.todaysChange;
+                            changePercent = tickerData.todaysChangePerc;
+                        }
+                        timestamp = timestamp || new Date(tickerData.updated);
+                    }
                  } else {
-                     console.warn(`Failed to get previous close for ${ticker}: ${prevCloseResponse.status}`);
+                    // Log non-OK snapshot response but continue to fallback
+                    console.warn(`${operation}: Snapshot API returned ${snapshotResponse.status}. Trying aggregates.`);
                  }
+             } catch (snapError: any) {
+                 console.warn(`${operation}: Snapshot API call failed, trying aggregates: ${snapError.message}`);
              }
 
+             // Fallback to Previous Day Close if snapshot failed or incomplete
+             if (currentPrice === undefined || previousClose === undefined) {
+                 console.log(`${operation}: Snapshot insufficient, fetching previous close.`);
+                 const prevCloseUrl = `${REAL_FINANCIAL_DATA_API_ENDPOINT}/v2/aggs/ticker/${ticker}/prev?adjusted=true&apiKey=${REAL_FINANCIAL_DATA_API_KEY}`;
+                 try {
+                     const prevCloseResponse = await fetch(prevCloseUrl);
+                     if (prevCloseResponse.ok) {
+                         const prevCloseData = await prevCloseResponse.json();
+                         if (prevCloseData?.results?.length > 0) {
+                             const prevAgg = prevCloseData.results[0];
+                             if (previousClose === undefined) previousClose = prevAgg.c;
+                             if (currentPrice === undefined) {
+                                 currentPrice = prevAgg.c; // Use prev close as current price only if snapshot failed entirely
+                                 timestamp = new Date(prevAgg.t);
+                                 console.warn(`${operation}: Using previous close as current price due to snapshot failure.`);
+                             }
+                             if (changeValue === undefined && previousClose !== undefined && currentPrice !== undefined) changeValue = currentPrice - previousClose;
+                             if (changePercent === undefined && previousClose !== undefined && previousClose !== 0 && changeValue !== undefined) changePercent = (changeValue / previousClose) * 100;
+                             if (volume === undefined) volume = prevAgg.v;
+                         } else {
+                             console.warn(`${operation}: No results found in previous close response.`);
+                         }
+                     } else {
+                         console.warn(`${operation}: Failed to get previous close - ${prevCloseResponse.status}.`);
+                     }
+                 } catch (aggError: any) {
+                      console.warn(`${operation}: Previous close API call failed: ${aggError.message}`);
+                 }
+             }
 
              if (currentPrice === undefined) {
-                 throw new Error(`No current price/value found for ${ticker} after multiple attempts.`);
+                 throw new DataProviderError(`No current price/value found for ${ticker} after multiple attempts.`);
              }
 
-             // Final formatting
-             const price = parseFloat((currentPrice * priceMultiplier).toFixed(4));
-             const prevCloseNum = previousClose !== undefined ? parseFloat((previousClose * priceMultiplier).toFixed(4)) : undefined;
+             const price = parseFloat(currentPrice.toFixed(4));
+             const prevCloseNum = previousClose !== undefined ? parseFloat(previousClose.toFixed(4)) : undefined;
              const changeValNum = changeValue !== undefined ? parseFloat(changeValue.toFixed(4)) : undefined;
              const changePercNum = changePercent !== undefined ? parseFloat(changePercent.toFixed(2)) : undefined;
 
@@ -535,16 +462,17 @@ export async function getMarketData(ticker: string): Promise<MarketData> {
              };
 
         } catch (error: any) {
-            console.error(`Error fetching market data for ${ticker} from real API:`, error);
-            throw new Error(`Failed to fetch market data for ${ticker}: ${error.message}`);
+            console.error(`Error in ${operation} from real API:`, error);
+            if (error instanceof DataProviderError || error instanceof ValidationError) throw error;
+            throw new ApiError(`Failed to fetch market data for ${ticker}: ${error.message}`, error);
         }
     } else {
-        console.warn(`getMarketData(${ticker}): Using MOCK data. Set NEXT_PUBLIC_USE_MOCK_API=false in .env for real data.`);
+        console.warn(`${operation}: Using MOCK data.`);
         await new Promise(resolve => setTimeout(resolve, 150));
          const isYieldIndex = ticker.startsWith('^');
          const baseValue = isYieldIndex ? 3.5 : (ticker === 'AGG' || ticker === 'BND' || ticker === 'GOVT' || ticker === 'TIP') ? 95 : ticker === 'SPY' ? 500 : ticker === 'QQQ' ? 400 : 100;
-         const prevClose = baseValue + (Math.random() - 0.5) * (isYieldIndex ? 0.1 : baseValue * 0.01); // 1% volatility
-         const currentPrice = prevClose + (Math.random() - 0.5) * (isYieldIndex ? 0.05 : baseValue * 0.005); // 0.5% volatility
+         const prevClose = baseValue + (Math.random() - 0.5) * (isYieldIndex ? 0.1 : baseValue * 0.01);
+         const currentPrice = prevClose + (Math.random() - 0.5) * (isYieldIndex ? 0.05 : baseValue * 0.005);
          const changeValue = currentPrice - prevClose;
          const changePercent = prevClose !== 0 ? (changeValue / prevClose) * 100 : 0;
          return {
@@ -564,84 +492,95 @@ export async function getMarketData(ticker: string): Promise<MarketData> {
 
 /**
  * Fetch historical price/yield data for a given ticker and time range.
+ * Enhanced with basic validation and error handling.
  *
  * @param ticker The ticker symbol.
  * @param range The time range ('1m', '6m', '1y').
  * @returns A promise resolving to an array of historical data points.
- * @throws {Error} If the API call fails or is not implemented.
+ * @throws {ValidationError} If ticker or range is invalid.
+ * @throws {DataProviderError} If the external API call fails or returns no data.
+ * @throws {ApiError} For other unexpected errors.
  */
  export async function getHistoricalData(ticker: string, range: string): Promise<{ date: string; value: number }[]> {
-    console.log(`API Call: getHistoricalData(${ticker}, ${range})`);
+    const operation = `getHistoricalData(${ticker}, ${range})`;
+    console.log(`API Call: ${operation}`);
+
+    // Input validation
+    if (!ticker || typeof ticker !== 'string' || ticker.trim().length === 0) {
+        throw new ValidationError("Invalid ticker symbol provided.");
+    }
+    const validRanges = ['1m', '6m', '1y'];
+    if (!range || !validRanges.includes(range)) {
+        throw new ValidationError(`Invalid range specified. Must be one of: ${validRanges.join(', ')}`);
+    }
+
     simulateError(`Failed to fetch historical data for ${ticker}.`);
 
      if (!USE_MOCK_API) {
-        console.log(`Attempting REAL API call for getHistoricalData(${ticker}, ${range}) (Provider: ${REAL_FINANCIAL_DATA_PROVIDER})`);
+        console.log(`Attempting REAL API call for ${operation} (Provider: ${REAL_FINANCIAL_DATA_PROVIDER})`);
          if (!REAL_FINANCIAL_DATA_API_ENDPOINT || !REAL_FINANCIAL_DATA_API_KEY) {
-            console.error("Real Financial Data API endpoint or key not configured in .env");
-            throw new Error("Financial Data API not configured for getHistoricalData.");
+            console.error(`${operation}: Real Financial Data API endpoint or key not configured.`);
+            throw new DataProviderError("Financial Data API not configured.");
         }
         try {
              const endDate = new Date();
              const startDate = new Date();
              let multiplier = 1;
              let timespan = 'day';
-             let limit = 5000; // Polygon limit
+             let limit = 5000;
              switch (range) {
                  case '1m': startDate.setMonth(endDate.getMonth() - 1); limit = 31; break;
                  case '6m': startDate.setMonth(endDate.getMonth() - 6); limit = 180; break;
                  case '1y': startDate.setFullYear(endDate.getFullYear() - 1); limit = 366; break;
-                 default: throw new Error("Invalid range specified");
              }
              const formatAPIDate = (date: Date) => date.toISOString().split('T')[0];
-             let apiUrl = '';
-             const isYieldIndex = ticker.startsWith('^');
-             let valueField = 'c'; // Closing price/value
-
-             // Use Polygon.io Aggregates (Bars) endpoint
-             apiUrl = `${REAL_FINANCIAL_DATA_API_ENDPOINT}/v2/aggs/ticker/${ticker}/range/${multiplier}/${timespan}/${formatAPIDate(startDate)}/${formatAPIDate(endDate)}?adjusted=true&sort=asc&limit=${limit}&apiKey=${REAL_FINANCIAL_DATA_API_KEY}`;
+             let apiUrl = `${REAL_FINANCIAL_DATA_API_ENDPOINT}/v2/aggs/ticker/${ticker}/range/${multiplier}/${timespan}/${formatAPIDate(startDate)}/${formatAPIDate(endDate)}?adjusted=true&sort=asc&limit=${limit}&apiKey=${REAL_FINANCIAL_DATA_API_KEY}`;
 
              const response = await fetch(apiUrl);
              if (!response.ok) {
-                 let errorBody = '';
-                 try { errorBody = await response.text(); } catch {}
-                 throw new Error(`API Error fetching historical data: ${response.status} ${response.statusText} - ${errorBody}`);
+                 const errorText = await response.text().catch(() => response.statusText);
+                 throw new DataProviderError(`API Error fetching historical data: ${response.status} ${errorText}`);
             }
              const data = await response.json();
 
              if (!data.results || data.results.length === 0) {
-                 console.warn(`No historical results found for ${ticker} in the specified range.`);
-                 return []; // Return empty array if no data
-                // throw new Error(`No results found for ${ticker} in historical data.`);
+                 console.warn(`${operation}: No historical results found for ${ticker} in the specified range.`);
+                 // Consider returning empty array instead of throwing error if it's acceptable
+                 return [];
+                 // throw new DataProviderError(`No results found for ${ticker} in historical data.`);
              }
 
              return data.results.map((bar: any) => ({
-                 date: new Date(bar.t).toISOString().split('T')[0], // Ensure date is YYYY-MM-DD
-                 value: parseFloat(bar[valueField]),
+                 date: new Date(bar.t).toISOString().split('T')[0],
+                 value: parseFloat(bar.c), // Use closing price 'c'
              }));
 
         } catch (error: any) {
-            console.error(`Error fetching historical data for ${ticker} from real API:`, error);
-            throw new Error(`Failed to fetch historical data for ${ticker}: ${error.message}`);
+            console.error(`Error in ${operation} from real API:`, error);
+            if (error instanceof DataProviderError || error instanceof ValidationError) throw error;
+            throw new ApiError(`Failed to fetch historical data for ${ticker}: ${error.message}`, error);
         }
     } else {
-        console.warn(`getHistoricalData(${ticker}, ${range}): Using MOCK data. Set NEXT_PUBLIC_USE_MOCK_API=false in .env for real data.`);
+        console.warn(`${operation}: Using MOCK data.`);
         await new Promise(resolve => setTimeout(resolve, 500));
          const endDate = new Date();
          const startDate = new Date();
-         let numPoints = 30; // Approx for 1m
+         let numPoints = 30;
          if (range === '6m') { numPoints = 126; startDate.setMonth(endDate.getMonth() - 6); }
          else if (range === '1y') { numPoints = 252; startDate.setFullYear(endDate.getFullYear() - 1); }
          else { startDate.setMonth(endDate.getMonth() - 1); }
 
          const isYieldIndex = ticker.startsWith('^');
          const baseValue = isYieldIndex ? 3.5 : (ticker === 'AGG' || ticker === 'BND' || ticker === 'GOVT' || ticker === 'TIP') ? 95 : ticker === 'SPY' ? 500 : ticker === 'QQQ' ? 400 : 100;
-         const volatility = isYieldIndex ? 0.01 : 0.005; // % daily volatility
+         const volatility = isYieldIndex ? 0.01 : 0.005;
          let currentValue = baseValue;
          const data: { date: string; value: number }[] = [];
          for (let i = 0; i < numPoints; i++) {
              const currentDate = new Date(startDate);
-             currentDate.setDate(startDate.getDate() + i); // Simple linear date progression
-             currentValue *= (1 + (Math.random() - 0.48) * volatility); // Simulate daily change %
+             currentDate.setDate(startDate.getDate() + i);
+             // Add simple check for weekend (skip Sat/Sun) for slightly more realism
+             if (currentDate.getDay() === 0 || currentDate.getDay() === 6) continue;
+             currentValue *= (1 + (Math.random() - 0.48) * volatility);
              data.push({
                  date: currentDate.toISOString().split('T')[0],
                  value: parseFloat(currentValue.toFixed(4))
@@ -653,49 +592,46 @@ export async function getMarketData(ticker: string): Promise<MarketData> {
 
 /**
  * Asynchronously retrieves current government bond yields.
- * Specific implementation depends heavily on the data provider.
+ * Enhanced with basic validation and error handling.
  *
  * @returns A promise resolving to an array of GovBondYield objects.
- * @throws {Error} If the API call fails or is not implemented.
+ * @throws {DataProviderError} If the external API calls fail or return no data.
+ * @throws {ApiError} For other unexpected errors.
  */
 export async function getGovBondYields(): Promise<GovBondYield[]> {
-    console.log(`API Call: getGovBondYields`);
+    const operation = 'getGovBondYields';
+    console.log(`API Call: ${operation}`);
     simulateError('Failed to fetch bond yields.');
 
     if (!USE_MOCK_API) {
-        console.log(`Attempting REAL API call for getGovBondYields (Provider: ${REAL_FINANCIAL_DATA_PROVIDER})`);
+        console.log(`Attempting REAL API call for ${operation} (Provider: ${REAL_FINANCIAL_DATA_PROVIDER})`);
         if (!REAL_FINANCIAL_DATA_API_ENDPOINT || !REAL_FINANCIAL_DATA_API_KEY) {
-            console.error("Real Financial Data API endpoint or key not configured in .env");
-            throw new Error("Financial Data API not configured for getGovBondYields.");
+            console.error(`${operation}: Real Financial Data API endpoint or key not configured.`);
+            throw new DataProviderError("Financial Data API not configured.");
         }
         try {
-            // ** REAL API INTEGRATION POINT **
-            // This is tricky with free APIs. Polygon doesn't have a dedicated yield curve endpoint.
-            // Often, you need to fetch individual bond futures or specific CBOE index tickers.
-            // Example using known index tickers (limited coverage):
             const yieldTickers = [
-                // Common CBOE Treasury Yield Indices
                 { maturity: '5y', ticker: '^FVX' },
                 { maturity: '10y', ticker: '^TNX' },
                 { maturity: '30y', ticker: '^TYX' },
-                // Other potential sources (might require different API calls or may not work)
-                 { maturity: '2y', ticker: '^UST2Y' }, // Example, check provider
-                 { maturity: '1y', ticker: '^UST1Y' }, // Example, check provider
+                // { maturity: '2y', ticker: '^UST2Y' }, // Example - Check availability
+                // { maturity: '1y', ticker: '^UST1Y' }, // Example - Check availability
             ];
 
             const yieldPromises = yieldTickers.map(async ({ maturity, ticker }) => {
                  try {
                     const marketData = await getMarketData(ticker); // Reuse getMarketData
-                     if (marketData.price === undefined) return null; // Skip if price (yield) is missing
+                    if (marketData.price === undefined) return null;
                     return {
                         maturity: maturity,
-                        yield: marketData.price, // Assuming price holds the yield value
-                        change: marketData.changeValue, // Assuming changeValue is the absolute change in yield % points
+                        yield: marketData.price,
+                        change: marketData.changeValue,
                         timestamp: marketData.timestamp,
                     };
-                 } catch (err) {
-                    console.warn(`Failed to fetch yield data for ${ticker} (${maturity}):`, err);
-                    return null; // Return null if fetching fails for a specific maturity
+                 } catch (err: any) {
+                    // Log individual failures but don't necessarily fail the whole function
+                    console.warn(`Failed to fetch yield data for ${ticker} (${maturity}): ${err.message}`);
+                    return null;
                  }
             });
 
@@ -703,29 +639,29 @@ export async function getGovBondYields(): Promise<GovBondYield[]> {
             const validYields = results.filter(y => y !== null) as GovBondYield[];
 
             if (validYields.length === 0) {
-                throw new Error("Could not retrieve any valid yield data from the API.");
+                // Throw error only if *all* attempts failed
+                throw new DataProviderError("Could not retrieve any valid yield data from the API.");
             }
 
-            console.log(`getGovBondYields: Fetched ${validYields.length} yield points from REAL API.`);
-             // Sort by typical maturity order if needed
+            console.log(`${operation}: Fetched ${validYields.length} yield points from REAL API.`);
             const maturityOrder = ['1m', '3m', '6m', '1y', '2y', '5y', '10y', '30y'];
             validYields.sort((a, b) => maturityOrder.indexOf(a.maturity) - maturityOrder.indexOf(b.maturity));
 
             return validYields;
 
         } catch (error: any) {
-            console.error(`Error fetching government bond yields from real API:`, error);
-            throw new Error(`Failed to fetch government bond yields: ${error.message}`);
+            console.error(`Error in ${operation} from real API:`, error);
+            if (error instanceof DataProviderError) throw error;
+            throw new ApiError(`Failed to fetch government bond yields: ${error.message}`, error);
         }
     } else {
-        console.warn("getGovBondYields: Using MOCK data. Set NEXT_PUBLIC_USE_MOCK_API=false in .env for real data.");
+        console.warn(`${operation}: Using MOCK data.`);
         await new Promise(resolve => setTimeout(resolve, 400));
-        // Simulate a typical yield curve
         const maturities = ['1m', '3m', '6m', '1y', '2y', '5y', '10y', '30y'];
-        const baseYields = [5.1, 5.0, 4.9, 4.7, 4.5, 4.3, 4.4, 4.6]; // Example inverted/flat curve
+        const baseYields = [5.1, 5.0, 4.9, 4.7, 4.5, 4.3, 4.4, 4.6];
         const now = new Date();
         return maturities.map((mat, index) => {
-            const change = (Math.random() - 0.5) * 0.05; // Random change up to +/- 5 bps
+            const change = (Math.random() - 0.5) * 0.05;
             return {
                 maturity: mat,
                 yield: parseFloat((baseYields[index] + Math.random() * 0.1 - 0.05).toFixed(3)),
@@ -737,36 +673,62 @@ export async function getGovBondYields(): Promise<GovBondYield[]> {
 }
 
 
-// Removed getTopMovers as it's less relevant for gov trading focus
-
-
 // --- Broker API Functions ---
 
 /**
  * Asynchronously submits an order using the Broker API.
+ * Enhanced with input validation and specific error handling.
  *
  * @param order The order details to submit.
  * @returns A promise resolving to the submitted Order object, updated with ID and status.
- * @throws {Error} If the API call fails or is not implemented.
+ * @throws {ValidationError} If order details are invalid.
+ * @throws {BrokerConnectionError} If the broker API is unavailable or authentication fails.
+ * @throws {ComplianceError} If the order violates compliance rules (simulated).
+ * @throws {MarketConditionError} If market conditions prevent execution (e.g., halted).
+ * @throws {ApiError} For other unexpected broker errors.
  */
 export async function submitOrder(order: Order): Promise<Order> {
-    console.log(`BROKER API Call: submitOrder(${order.type} ${order.quantity} ${order.ticker})`);
+    const operation = `submitOrder(${order.type} ${order.quantity} ${order.ticker})`;
+    console.log(`BROKER API Call: ${operation}`);
+
+    // 1. Input Validation
+    try {
+        OrderSchema.parse(order); // Validate basic structure and types
+        if (order.orderPriceType === 'limit' && order.limitPrice === undefined) {
+            throw new ValidationError("Limit price is required for limit orders.");
+        }
+        // Add more specific validations (e.g., max order size, valid ticker format)
+    } catch (e: any) {
+        if (e instanceof z.ZodError) {
+            throw new ValidationError(`Invalid order details: ${e.errors.map(err => `${err.path.join('.')} ${err.message}`).join(', ')}`);
+        }
+        throw new ValidationError(`Order validation failed: ${e.message}`, e);
+    }
+
+    // 2. Pre-Execution Checks (Simulated - requires real-time data and rules engine)
+    try {
+        // await checkMarketOpen(order.ticker); // Throws MarketConditionError if closed/halted
+        // await checkComplianceRules(order); // Throws ComplianceError if violation
+        // await checkRiskLimits(order); // Throws Error if limits exceeded
+        // await checkLiquidity(order); // Throws MarketConditionError if insufficient liquidity
+    } catch(preCheckError: any) {
+        console.error(`${operation}: Pre-execution check failed: ${preCheckError.message}`);
+        throw preCheckError; // Re-throw the specific error
+    }
+
+
     simulateError(`Failed to submit order for ${order.ticker}.`);
 
     if (!USE_MOCK_API) {
-        console.log(`Attempting REAL BROKER API call for submitOrder(${order.ticker})`);
+        console.log(`Attempting REAL BROKER API call for ${operation}`);
         if (!REAL_BROKER_API_ENDPOINT || !REAL_BROKER_API_KEY || !REAL_BROKER_SECRET_KEY) {
-            console.error("Real Broker API endpoint, key, or secret not configured in .env");
-            throw new Error("Broker API not configured for submitOrder.");
+            console.error(`${operation}: Real Broker API credentials or endpoint not configured.`);
+            throw new BrokerConnectionError("Broker API not configured.");
         }
         try {
-             // Example using fetch (replace with Broker SDK call - e.g., Alpaca)
              const orderPayload: any = {
                  symbol: order.ticker,
-                 // Alpaca API uses 'qty' for share quantity, 'notional' for dollar amount
-                 // Decide which one to use based on your strategy or order type
-                 qty: order.quantity.toString(), // Assuming quantity represents shares/contracts
-                 // notional: (order.type === 'buy' && order.orderPriceType === 'market') ? (order.quantity * estimatedPrice).toString() : undefined, // Example for notional buy
+                 qty: order.quantity.toString(),
                  side: order.type,
                  type: order.orderPriceType || 'market',
                  time_in_force: order.time_in_force || 'day',
@@ -774,12 +736,10 @@ export async function submitOrder(order: Order): Promise<Order> {
              if (order.orderPriceType === 'limit' && order.limitPrice !== undefined) {
                  orderPayload.limit_price = order.limitPrice.toString();
              }
-             // Add other broker-specific fields if needed (e.g., client_order_id)
 
              const response = await fetch(`${REAL_BROKER_API_ENDPOINT}/v2/orders`, {
                  method: 'POST',
                  headers: {
-                     // Replace with your Broker's specific authentication (e.g., Alpaca)
                      'APCA-API-KEY-ID': REAL_BROKER_API_KEY,
                      'APCA-API-SECRET-KEY': REAL_BROKER_SECRET_KEY,
                      'Content-Type': 'application/json',
@@ -790,36 +750,48 @@ export async function submitOrder(order: Order): Promise<Order> {
              if (!response.ok) {
                  let errorData;
                  try { errorData = await response.json(); } catch { errorData = { message: response.statusText }; }
-                 throw new Error(`Broker API Error ${response.status}: ${errorData.message || response.statusText}`);
+                 const errorMessage = errorData.message || response.statusText;
+                 // Map broker errors to custom types
+                 if (response.status === 401 || response.status === 403) {
+                    throw new AuthorizationError(`Broker Authentication Error ${response.status}: ${errorMessage}`);
+                 }
+                 if (response.status === 422 && errorMessage.includes('market is closed')) {
+                     throw new MarketConditionError(`Broker Error ${response.status}: Market is closed.`);
+                 }
+                 if (response.status === 422 && errorMessage.includes('compliance')) { // Example check
+                     throw new ComplianceError(`Broker Compliance Error ${response.status}: ${errorMessage}`);
+                 }
+                 // General broker error
+                 throw new BrokerConnectionError(`Broker API Error ${response.status}: ${errorMessage}`);
              }
 
              const submittedOrderData = await response.json();
-             // Map response back to Order interface (adjust fields based on broker response)
              return {
                  id: submittedOrderData.id,
                  ticker: submittedOrderData.symbol,
-                 quantity: parseFloat(submittedOrderData.qty || submittedOrderData.filled_qty || '0'), // Use qty or filled_qty
+                 quantity: parseFloat(submittedOrderData.qty || submittedOrderData.filled_qty || '0'),
                  type: submittedOrderData.side,
                  orderPriceType: submittedOrderData.type,
                  limitPrice: submittedOrderData.limit_price ? parseFloat(submittedOrderData.limit_price) : undefined,
-                 status: submittedOrderData.status as Order['status'], // Cast to known statuses
+                 status: submittedOrderData.status as Order['status'],
                  createdAt: new Date(submittedOrderData.created_at),
                  updatedAt: new Date(submittedOrderData.updated_at),
                  time_in_force: submittedOrderData.time_in_force,
              };
 
         } catch (error: any) {
-            console.error(`Error submitting order for ${order.ticker} to real Broker API:`, error);
-            throw new Error(`Failed to submit order for ${order.ticker}: ${error.message}`);
+            console.error(`Error in ${operation} with real Broker API:`, error);
+            // Re-throw specific errors or wrap unknown errors
+            if (error instanceof ApiError) throw error;
+            throw new ApiError(`Failed to submit order for ${order.ticker}: ${error.message}`, error);
         }
     } else {
-        console.warn(`submitOrder(${order.ticker}): Using MOCK data. Set NEXT_PUBLIC_USE_MOCK_API=false in .env for real action.`);
+        console.warn(`${operation}: Using MOCK data.`);
         await new Promise(resolve => setTimeout(resolve, 600));
-         // Simulate order acceptance
          return {
             ...order,
             id: `mock_ord_${Date.now()}`,
-            status: 'accepted', // Simulate acceptance, not immediate fill
+            status: 'accepted',
             createdAt: new Date(),
             updatedAt: new Date(),
          };
@@ -828,22 +800,24 @@ export async function submitOrder(order: Order): Promise<Order> {
 
 /**
  * Asynchronously retrieves the current portfolio positions from the Broker API.
+ * Enhanced with specific error handling.
  *
  * @returns A promise that resolves to an array of Position objects.
- * @throws {Error} If the API call fails or is not implemented.
+ * @throws {BrokerConnectionError} If the broker API is unavailable or authentication fails.
+ * @throws {ApiError} For other unexpected broker errors.
  */
 export async function getPositions(): Promise<Position[]> {
-    console.log('BROKER API Call: getPositions');
+    const operation = 'getPositions';
+    console.log(`BROKER API Call: ${operation}`);
     simulateError('Failed to fetch portfolio positions.');
 
      if (!USE_MOCK_API) {
-        console.log('Attempting REAL BROKER API call for getPositions');
+        console.log(`Attempting REAL BROKER API call for ${operation}`);
          if (!REAL_BROKER_API_ENDPOINT || !REAL_BROKER_API_KEY || !REAL_BROKER_SECRET_KEY) {
-            console.error("Real Broker API endpoint, key, or secret not configured in .env");
-            throw new Error("Broker API not configured for getPositions.");
+            console.error(`${operation}: Real Broker API credentials or endpoint not configured.`);
+            throw new BrokerConnectionError("Broker API not configured for getPositions.");
         }
         try {
-             // Example using fetch (replace with Broker SDK call)
              const response = await fetch(`${REAL_BROKER_API_ENDPOINT}/v2/positions`, {
                  headers: {
                      'APCA-API-KEY-ID': REAL_BROKER_API_KEY,
@@ -851,32 +825,35 @@ export async function getPositions(): Promise<Position[]> {
                      'Accept': 'application/json',
                  },
              });
-             if (!response.ok) throw new Error(`Broker API Error fetching positions: ${response.status} ${response.statusText}`);
+             if (!response.ok) {
+                 const errorText = await response.text().catch(() => response.statusText);
+                 if (response.status === 401 || response.status === 403) {
+                     throw new AuthorizationError(`Broker Authentication Error ${response.status}: ${errorText}`);
+                 }
+                 throw new BrokerConnectionError(`Broker API Error fetching positions: ${response.status} ${errorText}`);
+            }
              const data = await response.json();
 
-             // Map the response data to the Position[] interface (adjust fields based on broker)
              const positions: Position[] = data.map((pos: any) => ({
                  ticker: pos.symbol,
-                 quantity: parseFloat(pos.qty), // Use parseFloat for safety
-                 averagePrice: parseFloat(pos.avg_entry_price), // Can be price or yield basis
-                 current_price: parseFloat(pos.current_price), // Broker often provides this
-                 market_value: parseFloat(pos.market_value),
-                 unrealized_pnl: parseFloat(pos.unrealized_pl),
-                 // Infer asset type based on ticker or other data if available from broker
-                 asset_type: pos.asset_class === 'us_equity' ? AssetType.STOCK_INDEX_ETF : AssetType.OTHER, // Example mapping
-                 // Add country, maturity, etc. if provided by broker position data
+                 quantity: parseFloat(pos.qty),
+                 averagePrice: parseFloat(pos.avg_entry_price),
+                 current_price: pos.current_price ? parseFloat(pos.current_price) : undefined,
+                 market_value: pos.market_value ? parseFloat(pos.market_value) : undefined,
+                 unrealized_pnl: pos.unrealized_pl ? parseFloat(pos.unrealized_pl) : undefined,
+                 asset_type: pos.asset_class === 'us_equity' ? AssetType.STOCK_INDEX_ETF : AssetType.OTHER,
              }));
-             console.log(`getPositions: Fetched ${positions.length} positions from REAL API.`);
+             console.log(`${operation}: Fetched ${positions.length} positions from REAL API.`);
              return positions;
 
         } catch (error: any) {
-            console.error("Error fetching positions from real Broker API:", error);
-            throw new Error(`Failed to fetch positions: ${error.message}`);
+            console.error(`Error in ${operation} from real Broker API:`, error);
+            if (error instanceof ApiError) throw error;
+            throw new ApiError(`Failed to fetch positions: ${error.message}`, error);
         }
     } else {
-        console.warn("getPositions: Using MOCK data. Set NEXT_PUBLIC_USE_MOCK_API=false in .env for real data.");
+        console.warn(`${operation}: Using MOCK data.`);
         await new Promise(resolve => setTimeout(resolve, 450));
-         // Simulate some government bond / ETF positions
          return [
             { ticker: 'GOVT', quantity: 1000, averagePrice: 23.50, current_price: 23.80, market_value: 23800, unrealized_pnl: 300, asset_type: AssetType.STOCK_INDEX_ETF, country: 'US' },
             { ticker: 'AGG', quantity: 500, averagePrice: 98.20, current_price: 97.50, market_value: 48750, unrealized_pnl: -350, asset_type: AssetType.STOCK_INDEX_ETF, country: 'US' },
@@ -888,22 +865,24 @@ export async function getPositions(): Promise<Position[]> {
 
 /**
  * Asynchronously retrieves the current account balance from the Broker API.
+ * Enhanced with specific error handling.
  *
  * @returns A promise that resolves to an AccountBalance object.
- * @throws {Error} If the API call fails or is not implemented.
+ * @throws {BrokerConnectionError} If the broker API is unavailable or authentication fails.
+ * @throws {ApiError} For other unexpected broker errors.
  */
 export async function getAccountBalance(): Promise<AccountBalance> {
-    console.log('BROKER API Call: getAccountBalance');
+    const operation = 'getAccountBalance';
+    console.log(`BROKER API Call: ${operation}`);
     simulateError('Failed to fetch account balance.');
 
     if (!USE_MOCK_API) {
-        console.log('Attempting REAL BROKER API call for getAccountBalance');
+        console.log(`Attempting REAL BROKER API call for ${operation}`);
         if (!REAL_BROKER_API_ENDPOINT || !REAL_BROKER_API_KEY || !REAL_BROKER_SECRET_KEY) {
-            console.error("Real Broker API endpoint, key, or secret not configured in .env");
-            throw new Error("Broker API not configured for getAccountBalance.");
+            console.error(`${operation}: Real Broker API credentials or endpoint not configured.`);
+            throw new BrokerConnectionError("Broker API not configured for getAccountBalance.");
         }
         try {
-             // Example using fetch (replace with Broker SDK call)
              const response = await fetch(`${REAL_BROKER_API_ENDPOINT}/v2/account`, {
                  headers: {
                      'APCA-API-KEY-ID': REAL_BROKER_API_KEY,
@@ -911,29 +890,34 @@ export async function getAccountBalance(): Promise<AccountBalance> {
                      'Accept': 'application/json',
                  },
              });
-             if (!response.ok) throw new Error(`Broker API Error fetching account: ${response.status} ${response.statusText}`);
+             if (!response.ok) {
+                 const errorText = await response.text().catch(() => response.statusText);
+                 if (response.status === 401 || response.status === 403) {
+                     throw new AuthorizationError(`Broker Authentication Error ${response.status}: ${errorText}`);
+                 }
+                 throw new BrokerConnectionError(`Broker API Error fetching account: ${response.status} ${errorText}`);
+             }
              const data = await response.json();
 
-             // Map response to AccountBalance interface (adjust fields based on broker)
              const balance: AccountBalance = {
                  cash: parseFloat(data.cash),
                  currency: data.currency,
-                 buying_power: parseFloat(data.buying_power),
-                 portfolio_value: parseFloat(data.portfolio_value),
-                 // Alpaca: non_marginable_buying_power often represents settled cash for cash accounts
-                 settled_cash: parseFloat(data.non_marginable_buying_power || data.cash), // Fallback to cash
+                 buying_power: data.buying_power ? parseFloat(data.buying_power) : undefined,
+                 portfolio_value: data.portfolio_value ? parseFloat(data.portfolio_value) : undefined,
+                 settled_cash: data.non_marginable_buying_power ? parseFloat(data.non_marginable_buying_power) : parseFloat(data.cash), // Fallback
              };
-             console.log(`getAccountBalance: Fetched balance from REAL API. Cash: ${balance.cash} ${balance.currency}`);
+             console.log(`${operation}: Fetched balance from REAL API. Cash: ${balance.cash} ${balance.currency}`);
              return balance;
 
         } catch (error: any) {
-            console.error("Error fetching account balance from real Broker API:", error);
-            throw new Error(`Failed to fetch account balance: ${error.message}`);
+            console.error(`Error in ${operation} from real Broker API:`, error);
+            if (error instanceof ApiError) throw error;
+            throw new ApiError(`Failed to fetch account balance: ${error.message}`, error);
         }
     } else {
-        console.warn("getAccountBalance: Using MOCK data. Set NEXT_PUBLIC_USE_MOCK_API=false in .env for real data.");
+        console.warn(`${operation}: Using MOCK data.`);
         await new Promise(resolve => setTimeout(resolve, 200));
-        return { cash: 1000000.00, currency: 'USD', buying_power: 1500000.00, portfolio_value: 1250000.00, settled_cash: 950000.00 }; // Mock institutional balance
+        return { cash: 1000000.00, currency: 'USD', buying_power: 1500000.00, portfolio_value: 1250000.00, settled_cash: 950000.00 };
     }
 }
 
@@ -942,38 +926,44 @@ export async function getAccountBalance(): Promise<AccountBalance> {
 
 /**
  * Initiates a deposit request by calling the backend.
- * This function DOES NOT handle payment processing directly. It communicates
- * with a secure backend endpoint which integrates with the payment processor.
+ * Enhanced with input validation and specific error handling.
  *
- * @param details Deposit details including amount, method, currency. Frontend might add a payment token if required (e.g., from Stripe Elements).
+ * @param details Deposit details including amount, method, currency.
  * @returns A promise resolving to the transaction status from the backend.
- * @throws {Error} If the backend call fails or backend endpoint is not configured.
+ * @throws {ValidationError} If deposit details are invalid.
+ * @throws {ApiError} If the backend API endpoint is not configured or the call fails.
  */
  export async function initiateDeposit(details: DepositDetails): Promise<TransactionStatus> {
-    console.log('Calling Backend: initiateDeposit', details);
+    const operation = 'initiateDeposit';
+    console.log(`Calling Backend: ${operation}`, details);
+
+    // 1. Input Validation
+    try {
+        DepositDetailsSchema.parse(details);
+        // Add more specific validation if needed (e.g., currency supported)
+    } catch (e: any) {
+        if (e instanceof z.ZodError) {
+            throw new ValidationError(`Invalid deposit details: ${e.errors.map(err => `${err.path.join('.')} ${err.message}`).join(', ')}`);
+        }
+        throw new ValidationError(`Deposit validation failed: ${e.message}`, e);
+    }
+
+
     simulateError('Failed to initiate deposit via backend.');
 
     if (!NEXT_PUBLIC_BACKEND_API_ENDPOINT) {
-        console.error("Backend API endpoint not configured (NEXT_PUBLIC_BACKEND_API_ENDPOINT).");
-        throw new Error("Backend API endpoint not configured. Cannot process deposits.");
+        console.error(`${operation}: Backend API endpoint not configured (NEXT_PUBLIC_BACKEND_API_ENDPOINT).`);
+        throw new ApiError("Backend API endpoint not configured. Cannot process deposits.");
     }
 
     if (!USE_MOCK_API) {
-        console.log("Attempting REAL backend call for initiateDeposit");
+        console.log(`Attempting REAL backend call for ${operation}`);
         try {
-            // ** REAL BACKEND INTEGRATION POINT **
-            // The backend endpoint '/deposit' must handle:
-            // 1. Receiving the deposit details (amount, method, currency, potentially payment_token).
-            // 2. Securely interacting with the chosen payment processor API (Stripe, PayPal, Nequi, etc.).
-            // 3. Creating a charge, processing the payment, handling webhooks.
-            // 4. If payment is successful, securely crediting the user's account balance (e.g., via Broker API or internal ledger).
-            // 5. Returning a TransactionStatus object.
             const response = await fetch(`${NEXT_PUBLIC_BACKEND_API_ENDPOINT}/deposit`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    // Add authentication headers (e.g., Authorization: Bearer <token>)
-                    // 'Authorization': `Bearer ${getAuthToken()}` // Implement getAuthToken from your auth provider
+                    // 'Authorization': `Bearer ${getAuthToken()}` // Add real auth
                 },
                 body: JSON.stringify(details),
             });
@@ -981,44 +971,32 @@ export async function getAccountBalance(): Promise<AccountBalance> {
             if (!response.ok) {
                 let errorData;
                 try { errorData = await response.json(); } catch { errorData = { message: response.statusText }; }
-                // Provide a more user-friendly error based on status
-                 let userMessage = `Deposit failed: ${errorData.message || response.statusText}`;
-                 if (response.status === 400) userMessage = `Deposit failed: Invalid input. ${errorData.message || ''}`;
-                 if (response.status === 402) userMessage = `Deposit failed: Payment declined. ${errorData.message || ''}`;
-                 if (response.status === 500) userMessage = `Deposit failed: Server error. Please try again later.`;
-                throw new Error(userMessage);
+                const userMessage = `Deposit failed: ${errorData.message || response.statusText}`;
+                // Consider mapping backend errors to specific error types (e.g., InsufficientFundsError)
+                throw new ApiError(userMessage); // Use general ApiError for backend issues
             }
 
             const result: TransactionStatus = await response.json();
-            console.log("initiateDeposit: Received response from REAL backend:", result);
-            // Ensure the backend returns a valid TransactionStatus object
+            console.log(`${operation}: Received response from REAL backend:`, result);
             if (!result.transactionId || !result.status || !result.timestamp) {
-                throw new Error("Invalid response received from backend deposit endpoint.");
+                throw new ApiError("Invalid response received from backend deposit endpoint.");
             }
-            result.timestamp = new Date(result.timestamp); // Ensure timestamp is a Date object
+            result.timestamp = new Date(result.timestamp);
             return result;
 
         } catch (error: any) {
-            console.error("Error calling backend for initiateDeposit:", error);
-            // Re-throw the potentially user-friendly error from the try block
-            throw new Error(`Failed to initiate deposit: ${error.message}`);
+            console.error(`Error calling backend for ${operation}:`, error);
+            if (error instanceof ApiError || error instanceof ValidationError) throw error;
+            throw new ApiError(`Failed to initiate deposit: ${error.message}`, error);
         }
     } else {
-        console.warn("initiateDeposit: Using MOCK backend response. Set NEXT_PUBLIC_USE_MOCK_API=false for real calls.");
+        console.warn(`${operation}: Using MOCK backend response.`);
         await new Promise(resolve => setTimeout(resolve, 700));
-         // Simulate backend processing - return a realistic status
          const randomStatus = Math.random();
          let status: TransactionStatus['status'] = 'pending';
-         let message = 'Deposit request received by mock backend. Awaiting processing.';
-         if (randomStatus < 0.1) {
-             status = 'failed';
-             message = 'Mock backend simulated payment failure.';
-         } else if (randomStatus < 0.3) {
-            status = 'requires_action';
-            message = 'Mock backend requires additional verification (e.g., 3D Secure).';
-         }
-         // No 'completed' status here, as deposits often take time.
-         // The backend would typically update the status via webhook or polling.
+         let message = 'Deposit request received by mock backend.';
+         if (randomStatus < 0.1) { status = 'failed'; message = 'Mock backend simulated payment failure.'; }
+         else if (randomStatus < 0.3) { status = 'requires_action'; message = 'Mock backend requires additional verification.'; }
 
          return {
             transactionId: `mock_dep_${Date.now()}`,
@@ -1029,39 +1007,38 @@ export async function getAccountBalance(): Promise<AccountBalance> {
     }
 }
 
-
 /**
- * Initiates a transfer request by calling the backend. (Conceptual)
+ * Initiates a transfer request by calling the backend. (Conceptual - Requires Implementation)
  * @param details Transfer details.
  * @returns A promise resolving to the transaction status from the backend.
- * @throws {Error} If the backend call fails or is not implemented.
+ * @throws {ApiError} If the backend call fails or is not implemented.
+ * @throws {ValidationError} If details are invalid.
  */
 export async function initiateTransfer(details: TransferDetails): Promise<TransactionStatus> {
-    console.log('Calling Backend: initiateTransfer', details);
-     // Similar implementation to initiateDeposit, calling a '/transfer' backend endpoint
-     // Requires backend logic for moving funds between accounts or initiating external transfers.
-    console.warn("initiateTransfer: Backend call not implemented. Needs backend endpoint.");
-    throw new Error("initiateTransfer requires a backend implementation.");
+    const operation = 'initiateTransfer';
+    console.log(`Calling Backend: ${operation}`, details);
+    // 1. Add validation using Zod for TransferDetails
+    // 2. Implement backend call similar to initiateDeposit
+    console.warn(`${operation}: Backend call not implemented. Needs backend endpoint.`);
+    throw new ApiError("initiateTransfer requires a backend implementation.");
 }
 
 /**
- * Initiates a withdrawal request by calling the backend. (Conceptual)
+ * Initiates a withdrawal request by calling the backend. (Conceptual - Requires Implementation)
  * @param details Withdraw details.
  * @returns A promise resolving to the transaction status from the backend.
- * @throws {Error} If the backend call fails or is not implemented.
+ * @throws {ApiError} If the backend call fails or is not implemented.
+ * @throws {ValidationError} If details are invalid.
  */
 export async function initiateWithdraw(details: WithdrawDetails): Promise<TransactionStatus> {
-    console.log('Calling Backend: initiateWithdraw', details);
-     // Similar implementation to initiateDeposit, calling a '/withdraw' backend endpoint
-     // Requires backend logic for verifying funds and initiating payout via Broker API or payment processor.
-    console.warn("initiateWithdraw: Backend call not implemented. Needs backend endpoint.");
-    throw new Error("initiateWithdraw requires a backend implementation.");
+    const operation = 'initiateWithdraw';
+    console.log(`Calling Backend: ${operation}`, details);
+    // 1. Add validation using Zod for WithdrawDetails
+    // 2. Implement backend call similar to initiateDeposit
+    console.warn(`${operation}: Backend call not implemented. Needs backend endpoint.`);
+    throw new ApiError("initiateWithdraw requires a backend implementation.");
 }
 
+    
 
-// --- Other Potential Functions ---
-// - getOrderStatus(orderId)
-// - cancelOrder(orderId)
-// - getAccountActivity()
-// - getBondDetails(cusipOrSymbol)
-// - getEconomicCalendar()
+    

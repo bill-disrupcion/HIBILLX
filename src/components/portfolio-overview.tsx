@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -18,33 +19,35 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis, Line, ComposedChart, Bar } from "recharts" // Import Line, ComposedChart, Bar
-import { getPositions, type Position, getMarketData, type MarketData, getHistoricalData, AssetType } from '@/services/broker-api';
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis, Line, ComposedChart, Bar } from "recharts"
+import { getPositions, type Position, getMarketData, type MarketData, getHistoricalData, AssetType, ApiError, DataProviderError, ValidationError, BrokerConnectionError, AuthorizationError } from '@/services/broker-api'; // Import error types
 import { Skeleton } from '@/components/ui/skeleton';
-import { TrendingUp, TrendingDown, Minus, Info, AlertTriangle, LineChart as LineChartIcon, DollarSign, Landmark } from 'lucide-react'; // Use relevant icons
+import { TrendingUp, TrendingDown, Minus, Info, AlertTriangle, LineChart as LineChartIcon, DollarSign, Landmark } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { useToast } from '@/hooks/use-toast'; // Import useToast
 
 
 const chartConfig = {
   value: { label: "Value/Yield", color: "hsl(var(--primary))" },
-  price: { label: "Price", color: "hsl(var(--chart-1))" }, // Added for price line
-  yield: { label: "Yield (%)", color: "hsl(var(--chart-2))" }, // Added for yield line
+  price: { label: "Price", color: "hsl(var(--chart-1))" },
+  yield: { label: "Yield (%)", color: "hsl(var(--chart-2))" },
 } satisfies React.ComponentProps<typeof ChartContainer>["config"];
 
 
 export default function PortfolioOverview() {
+  const { toast } = useToast(); // Initialize toast
   const [positions, setPositions] = useState<Position[] | null>(null);
   const [marketDataMap, setMarketDataMap] = useState<Record<string, MarketData>>({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [chartData, setChartData] = useState<{ date: string; value: number; price?: number; yield?: number }[]>([]); // Include optional price/yield
+  const [error, setError] = useState<string | null>(null); // Overall portfolio loading error
+  const [chartData, setChartData] = useState<{ date: string; value: number; price?: number; yield?: number }[]>([]);
   const [chartRange, setChartRange] = useState<string>('1m');
   const [chartTicker, setChartTicker] = useState<string | null>(null);
   const [loadingChart, setLoadingChart] = useState(false);
-  const [chartError, setChartError] = useState<string | null>(null);
-  const [partialDataWarning, setPartialDataWarning] = useState<string | null>(null);
+  const [chartError, setChartError] = useState<string | null>(null); // Chart specific error
+  const [partialDataWarning, setPartialDataWarning] = useState<string | null>(null); // Warning for incomplete market data
 
 
    const formatCurrency = useCallback((value: number | undefined, compact = false) => {
@@ -63,31 +66,47 @@ export default function PortfolioOverview() {
   }, []);
 
 
-  // Memoize portfolio calculations, considering potential bond yields vs prices
+  // Memoize portfolio calculations, safely handling missing data
    const { portfolioValue, totalInvested, totalGainLoss, totalGainLossPercent } = useMemo(() => {
     if (!positions || positions.length === 0) {
       return { portfolioValue: 0, totalInvested: 0, totalGainLoss: 0, totalGainLossPercent: 0 };
     }
 
     let currentTotalValue = 0;
-    let investedTotal = 0; // Based on average acquisition price
+    let investedTotal = 0;
+    let valueCalculationPossible = true; // Flag to track if calculation is reliable
 
     positions.forEach((position) => {
-      const currentMarketData = marketDataMap[position.ticker];
-      const currentPrice = currentMarketData?.price; // This might be yield for some indices, but use market_value from broker if available
-      const marketValueFromBroker = position.market_value; // Use broker's calculation if provided
+      // Calculate cost basis
+      investedTotal += position.quantity * position.averagePrice;
 
-      if (typeof marketValueFromBroker === 'number') {
-          currentTotalValue += marketValueFromBroker;
-      } else if (typeof currentPrice === 'number' && currentPrice >= 0 && position.asset_type !== AssetType.OTHER) { // Use price only if not a yield index
-          currentTotalValue += position.quantity * currentPrice;
-      } else {
-         console.warn(`Missing or invalid market value/price for ${position.ticker} in portfolio calculation.`);
+      // Calculate current value (prefer broker's value, fallback to fetched)
+      const currentMarketData = marketDataMap[position.ticker];
+      let positionValue: number | undefined = position.market_value; // Prefer broker's market value
+
+      if (positionValue === undefined) {
+          const currentPrice = position.current_price ?? currentMarketData?.price;
+          if (typeof currentPrice === 'number' && currentPrice >= 0 && position.asset_type !== AssetType.OTHER) {
+              positionValue = position.quantity * currentPrice;
+          }
       }
 
-       // Cost basis calculation remains based on average acquisition price
-       investedTotal += position.quantity * position.averagePrice;
+      if (typeof positionValue === 'number') {
+          currentTotalValue += positionValue;
+      } else {
+         console.warn(`Missing or invalid market value/price for ${position.ticker} in portfolio calculation.`);
+         // If *any* position value is missing, the total is unreliable
+         valueCalculationPossible = false;
+      }
     });
+
+    // If total value calculation was compromised, return zeros or indicate unreliability
+    if (!valueCalculationPossible) {
+        console.warn("Portfolio value calculation is incomplete due to missing market data.");
+         // Optionally, set a state here to show a specific warning in the UI for the total value
+         // return { portfolioValue: 0, totalInvested: investedTotal, totalGainLoss: 0, totalGainLossPercent: 0 };
+         // Or return calculated value but understand it's partial
+    }
 
     const gainLoss = currentTotalValue - investedTotal;
     const gainLossPercent = investedTotal > 0 ? (gainLoss / investedTotal) * 100 : 0;
@@ -101,33 +120,35 @@ export default function PortfolioOverview() {
   }, [positions, marketDataMap]);
 
 
-  // Determine which ticker to chart initially (prioritize major bond ETF or largest holding)
+  // Determine which ticker to chart initially
   useEffect(() => {
     if (positions && positions.length > 0 && Object.keys(marketDataMap).length > 0 && !chartTicker && !error) {
-      const primaryBondEtf = positions.find(p => p.ticker === 'AGG' || p.ticker === 'BND' || p.ticker === 'GOVT');
+      const primaryBondEtf = positions.find(p => ['AGG', 'BND', 'GOVT'].includes(p.ticker));
       if (primaryBondEtf) {
         setChartTicker(primaryBondEtf.ticker);
       } else {
-        // Fallback to largest holding by market value
-        let largestTicker = null;
+        let largestTicker: string | null = null;
         let largestValue = -Infinity;
         positions.forEach(pos => {
            const value = pos.market_value ?? (marketDataMap[pos.ticker]?.price ? marketDataMap[pos.ticker]!.price * pos.quantity : -Infinity);
-            if (value > largestValue) {
+            if (typeof value === 'number' && value > largestValue) {
                 largestValue = value;
                 largestTicker = pos.ticker;
             }
         });
          if (largestTicker) {
              setChartTicker(largestTicker);
+         } else if (positions.length > 0) {
+            // Fallback to the first position if no value calculation was possible
+             setChartTicker(positions[0].ticker);
          }
       }
     } else if (error && !loading) {
-        setChartTicker(null);
+        setChartTicker(null); // Don't select a ticker if initial load failed
     }
   }, [positions, marketDataMap, chartTicker, error, loading]);
 
-  // Fetch initial positions and market data
+  // Fetch initial positions and market data with error handling
   useEffect(() => {
     const fetchInitialData = async () => {
       setLoading(true);
@@ -136,115 +157,142 @@ export default function PortfolioOverview() {
       setMarketDataMap({});
       setPositions(null);
       try {
-        // Fetch positions (assuming broker provides market_value, current_price, etc.)
-        const fetchedPositions = await getPositions();
+        // Fetch positions
+        const fetchedPositions = await getPositions(); // This can throw BrokerConnectionError, AuthorizationError, ApiError
         setPositions(fetchedPositions);
 
         if (fetchedPositions && fetchedPositions.length > 0) {
              let successfulMarketDataFetches = 0;
-             const neededTickers = fetchedPositions
-                .filter(p => p.current_price === undefined || p.yield_value === undefined) // Only fetch if broker didn't provide
+             // Identify tickers needing market data fetch (if not provided by broker)
+             const tickersToFetch = fetchedPositions
+                .filter(p => p.current_price === undefined && p.market_value === undefined && p.asset_type !== AssetType.OTHER) // Only fetch for non-yield assets without broker values
                 .map(p => p.ticker);
 
-             const marketDataPromises = neededTickers.map(ticker =>
-                getMarketData(ticker)
+             const marketDataPromises = tickersToFetch.map(ticker =>
+                getMarketData(ticker) // This can throw ValidationError, DataProviderError, ApiError
                     .then(data => ({ ticker, data }))
                     .catch(err => {
-                        console.error(`Failed to fetch market data for ${ticker}:`, err);
-                        return { ticker, data: null }; // Return null on individual fetch error
+                        console.warn(`Failed to fetch market data for ${ticker}:`, err.message);
+                        return { ticker, data: null, error: err.message }; // Return error info
                     })
              );
             const marketDataResults = await Promise.all(marketDataPromises);
 
             const dataMap: Record<string, MarketData> = {};
+            const failedFetches: string[] = [];
             marketDataResults.forEach(result => {
               if (result.data) {
                  dataMap[result.ticker] = result.data;
                  successfulMarketDataFetches++;
+              } else if (result.error) {
+                 failedFetches.push(`${result.ticker}: ${result.error}`);
               }
             });
-            // Merge broker-provided data with fetched data (fetched takes precedence if newer?)
+
+            // Merge broker-provided data (if any) with fetched data
             const initialMap: Record<string, MarketData> = {};
              fetchedPositions.forEach(pos => {
                  if (pos.current_price !== undefined) {
-                     initialMap[pos.ticker] = { // Create MarketData from Position data
+                     initialMap[pos.ticker] = {
                          ticker: pos.ticker,
-                         price: pos.current_price, // Might be yield if broker structures it that way
-                         timestamp: new Date(), // Use current time as broker data is usually near real-time
+                         price: pos.current_price,
+                         timestamp: new Date(), // Use current time for broker data
                          yield_value: pos.yield_value,
                          duration: pos.duration,
-                         // Add other fields if available from position
                      };
                  }
              });
 
-            setMarketDataMap({ ...initialMap, ...dataMap }); // Fetched data overwrites initial if keys match
+            setMarketDataMap({ ...initialMap, ...dataMap });
 
-             if (neededTickers.length > 0 && successfulMarketDataFetches < neededTickers.length) {
-                 const failedCount = neededTickers.length - successfulMarketDataFetches;
-                 setPartialDataWarning(`Could not load market data for ${failedCount} position(s). Portfolio value may be incomplete.`);
+             if (failedFetches.length > 0) {
+                 const warningMsg = `Could not load market data for ${failedFetches.length} position(s): ${failedFetches.join('; ')}. Portfolio value may be incomplete.`;
+                 setPartialDataWarning(warningMsg);
+                 toast({ variant: "warning", title: "Partial Market Data", description: `Could not load data for ${failedFetches.length} position(s).` });
              }
 
         } else {
-            setMarketDataMap({});
-            setPositions([]);
+            setMarketDataMap({}); // No positions, clear map
+            setPositions([]); // Set to empty array if fetch was successful but returned none
         }
 
       } catch (err: any) {
         console.error("Failed to fetch portfolio data:", err);
-        setError(`Failed to load portfolio data: ${err.message || 'Check API/backend.'}`);
-         setPositions([]);
+        let errorMessage = `Failed to load portfolio data.`;
+         if (err instanceof BrokerConnectionError || err instanceof AuthorizationError) {
+             errorMessage = `Broker Error: ${err.message}`;
+         } else if (err instanceof ApiError) {
+             errorMessage = `API Error: ${err.message}`;
+         } else {
+             errorMessage += ` ${err.message || 'Check API/backend.'}`;
+         }
+        setError(errorMessage);
+         setPositions([]); // Ensure positions is an empty array on error
          setMarketDataMap({});
+         toast({ variant: "destructive", title: "Portfolio Load Failed", description: errorMessage });
       } finally {
         setLoading(false);
       }
     };
 
     fetchInitialData();
-  }, []);
+  }, [toast]); // Add toast dependency
 
-   // Fetch historical chart data when ticker or range changes
+   // Fetch historical chart data with error handling
    useEffect(() => {
-    if (!chartTicker || error) {
-      setChartData([]); // Clear chart data if no ticker or if there was an initial load error
+    if (!chartTicker || error) { // Don't fetch chart data if initial load failed
+      setChartData([]);
       setLoadingChart(false);
-      setChartError(null);
+      setChartError(error ? "Cannot load chart due to initial portfolio error." : null); // Set chart error if main error exists
       return;
     }
 
-
     const fetchChartData = async () => {
       setLoadingChart(true);
-      setChartError(null);
+      setChartError(null); // Clear previous chart error
       setChartData([]);
       try {
         console.log(`Fetching chart data for: ${chartTicker}, range: ${chartRange}`);
-        // Fetch historical data (this typically returns closing price/value)
-        const history = await getHistoricalData(chartTicker, chartRange);
-         if (!Array.isArray(history) || history.length === 0) {
-             throw new Error("No historical data returned.");
+        const history = await getHistoricalData(chartTicker, chartRange); // Can throw ValidationError, DataProviderError, ApiError
+
+         if (!Array.isArray(history)) { // Validate response format
+             throw new Error("Received invalid historical data format.");
          }
-         // Assuming 'value' from getHistoricalData is the closing price/index value
-         // We can rename it to 'price' for clarity in the chart
+         if (history.length === 0) {
+             console.warn(`No historical data returned for ${chartTicker} in range ${chartRange}.`);
+             // Set specific message for no data, not necessarily an error
+             setChartError(`No historical data available for ${chartTicker} (${chartRange.toUpperCase()}).`);
+         }
+
          const formattedHistory = history.map(item => ({
              date: item.date,
-             value: item.value, // Keep 'value' for Area chart consistency? Or use price/yield?
-             price: item.value, // Map historical value to price
-             // TODO: Fetch historical yield data if available and needed for the chart
-             // This might require a separate API call or a different endpoint
+             value: item.value,
+             price: item.value,
          }));
         setChartData(formattedHistory);
       } catch (err: any) {
         console.error(`Failed to fetch historical data for ${chartTicker}:`, err);
-        setChartError(`Could not load chart data for ${chartTicker}: ${err.message || 'Check API.'}`);
-        setChartData([]);
+        let chartErrMsg = `Could not load chart data for ${chartTicker}.`;
+         if (err instanceof ValidationError) {
+             chartErrMsg = `Chart Error: ${err.message}`;
+         } else if (err instanceof DataProviderError) {
+             chartErrMsg = `Chart Data Error: ${err.message}`;
+         } else if (err instanceof ApiError) {
+             chartErrMsg = `Chart API Error: ${err.message}`;
+         } else {
+             chartErrMsg += ` ${err.message || 'Check API.'}`;
+         }
+        setChartError(chartErrMsg);
+        setChartData([]); // Clear data on error
+         // Optionally show a toast for chart errors too
+         // toast({ variant: "destructive", title: "Chart Error", description: chartErrMsg });
       } finally {
         setLoadingChart(false);
       }
     };
 
     fetchChartData();
-   }, [chartTicker, chartRange, error]); // Add error to dependency array
+   }, [chartTicker, chartRange, error, toast]); // Add error and toast
 
 
   const renderGainLossIcon = (value: number | undefined) => {
@@ -261,7 +309,8 @@ export default function PortfolioOverview() {
      return "text-muted-foreground";
    }
 
-   const shouldShowAlert = error || partialDataWarning;
+   // Determine overall alert state
+   const showAlert = error || partialDataWarning;
    const alertVariant = error ? "destructive" : "warning";
    const alertTitle = error ? "Error Loading Portfolio" : "Partial Data Loaded";
    const alertDescription = error || partialDataWarning;
@@ -289,8 +338,12 @@ export default function PortfolioOverview() {
       <CardContent className="space-y-6">
         {loading ? (
           <div className="space-y-6"> <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-2 md:space-y-0"> <div className="space-y-1"> <Skeleton className="h-4 w-24" /> <Skeleton className="h-9 w-48" /> </div> <div className="flex items-center space-x-1"> <Skeleton className="h-4 w-4" /> <Skeleton className="h-6 w-32" /> <Skeleton className="h-4 w-20" /> </div> </div> <Skeleton className="h-[250px] w-full" /> <Skeleton className="h-40 w-full" /> </div>
-        ) : shouldShowAlert ? (
-            <Alert variant={alertVariant}> <AlertTriangle className="h-4 w-4" /> <AlertTitle>{alertTitle}</AlertTitle> <AlertDescription>{alertDescription || "An error occurred while loading portfolio data."}</AlertDescription> </Alert>
+        ) : showAlert ? ( // Show main error/warning first if present
+            <Alert variant={alertVariant}>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>{alertTitle}</AlertTitle>
+                <AlertDescription>{alertDescription || "An error occurred."}</AlertDescription>
+            </Alert>
         ) : (
           <>
             {/* Portfolio Summary */}
@@ -298,7 +351,9 @@ export default function PortfolioOverview() {
                <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">Total Portfolio Value</p>
                 <p className="text-3xl font-bold">{formatCurrency(portfolioValue)}</p>
-                 {partialDataWarning && <p className="text-xs text-yellow-600 dark:text-yellow-400">(Based on available data)</p>}
+                 {partialDataWarning && ( // Show specific warning for incomplete value calculation
+                     <p className="text-xs text-yellow-600 dark:text-yellow-400">(Value calculation may be incomplete)</p>
+                 )}
               </div>
               <div className={`flex items-center space-x-1 ${getGainLossColor(totalGainLoss)}`}>
                  {renderGainLossIcon(totalGainLoss)}
@@ -308,7 +363,19 @@ export default function PortfolioOverview() {
                   <span className="text-sm">
                     ({formatPercent(totalGainLossPercent)})
                  </span>
-                  <TooltipProvider> <Tooltip> <TooltipTrigger> <Info className="h-3 w-3 text-muted-foreground cursor-help ml-1" /> </TooltipTrigger> <TooltipContent> <p>Total unrealized gain/loss based on average cost vs current market value.</p> {partialDataWarning && <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">May be incomplete.</p>} </TooltipContent> </Tooltip> </TooltipProvider>
+                  <TooltipProvider>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <button className="ml-1 p-0 appearance-none border-none bg-transparent cursor-help" aria-label="Show gain/loss info">
+                                <Info className="h-3 w-3 text-muted-foreground" />
+                            </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                            <p>Total unrealized gain/loss based on average cost vs current market value.</p>
+                            {partialDataWarning && <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">Market value calculation may be incomplete.</p>}
+                        </TooltipContent>
+                    </Tooltip>
+                </TooltipProvider>
               </div>
             </div>
 
@@ -317,30 +384,34 @@ export default function PortfolioOverview() {
                 <h3 className="text-lg font-semibold flex items-center">
                    <LineChartIcon className="mr-2 h-5 w-5 text-primary"/> Performance: {chartTicker || 'Select Holding'}
                 </h3>
+                 {/* Chart Error Display */}
+                 {chartError && !loadingChart && (
+                     <Alert variant="destructive" className="mb-2">
+                         <AlertTriangle className="h-4 w-4" />
+                         <AlertTitle>Chart Error</AlertTitle>
+                         <AlertDescription>{chartError}</AlertDescription>
+                     </Alert>
+                 )}
                 <div className="h-[250px] w-full relative border rounded-md p-2">
                     {loadingChart ? (
                         <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10 rounded-md"> <Skeleton className="h-full w-full" /> <span className="absolute text-sm text-muted-foreground">Loading chart data...</span> </div>
-                    ) : chartError ? (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-10 rounded-md text-center p-4"> <AlertTriangle className="h-6 w-6 text-destructive mb-2" /> <p className="text-sm font-medium text-destructive">Chart Error</p> <p className="text-xs text-destructive">{chartError}</p> </div>
                     ) : chartData.length === 0 || !chartTicker ? (
-                         <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10 rounded-md"> <p className="text-sm text-muted-foreground p-4 text-center"> {chartTicker ? `No historical data available for ${chartTicker}.` : 'Select a holding from the table below to view its chart.'} </p> </div>
+                         // Show message if loading finished but no data or ticker selected (and no critical error shown above)
+                         !chartError && <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10 rounded-md"> <p className="text-sm text-muted-foreground p-4 text-center"> {chartTicker ? `No historical data available for ${chartTicker} (${chartRange.toUpperCase()}).` : 'Select a holding from the table below to view its chart.'} </p> </div>
                     ) : (
+                        // Render chart only if data exists and no chart-specific error
+                        !chartError &&
                         <>
                             <ChartContainer config={chartConfig} className="h-full w-full">
-                                {/* Using ComposedChart to potentially show price and yield */}
                                 <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: -15, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                      <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(value, index) => { try { const date = new Date(value + 'T00:00:00Z'); if (isNaN(date.getTime())) return ''; const numPoints = chartData.length; if (chartRange === '1m') { const wi = Math.max(1, Math.floor(numPoints / 4)); return wi > 0 && (index === 0 || index === numPoints - 1 || index % wi === 0) ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : ''; } else if (chartRange === '6m') { const mi = Math.max(1, Math.floor(numPoints / 6)); return mi > 0 && (index === 0 || index === numPoints - 1 || index % mi === 0) ? date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }) : ''; } else if (chartRange === '1y') { const qi = Math.max(1, Math.floor(numPoints / 4)); return qi > 0 && (index === 0 || index === numPoints - 1 || index % qi === 0) ? date.toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' }) : ''; } else { return ''; } } catch (e) { return ''; } }} interval="preserveStartEnd" minTickGap={chartRange === '1m' ? 5 : 15} />
-                                    {/* Left Y-axis for Price */}
                                     <YAxis yAxisId="left" tickLine={false} axisLine={false} tickMargin={5} domain={['dataMin - (dataMax-dataMin)*0.05', 'dataMax + (dataMax-dataMin)*0.05']} tickFormatter={(value) => formatCurrency(value)} width={55} />
-                                     {/* Right Y-axis for Yield (optional) */}
                                      {chartData.some(d => d.yield !== undefined) && (
                                          <YAxis yAxisId="right" orientation="right" tickLine={false} axisLine={false} tickMargin={5} domain={['auto', 'auto']} tickFormatter={(value) => formatPercent(value)} width={45} />
                                      )}
                                     <ChartTooltip cursor={true} content={ <ChartTooltipContent labelFormatter={(label) => { try { return new Date(label + 'T00:00:00Z').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }); } catch { return label; } }} formatter={(value, name) => name === 'price' ? formatCurrency(value as number) : name === 'yield' ? formatPercent(value as number) : value} indicator="dot" labelClassName="text-sm font-semibold" /> } />
-                                    {/* Price Line */}
                                      <Line yAxisId="left" dataKey="price" type="monotone" stroke="var(--color-price)" strokeWidth={2} name="Price" dot={false} activeDot={{ r: 4, strokeWidth: 1 }} />
-                                     {/* Yield Line (optional) */}
                                      {chartData.some(d => d.yield !== undefined) && (
                                          <Line yAxisId="right" dataKey="yield" type="monotone" stroke="var(--color-yield)" strokeWidth={2} name="Yield" dot={false} activeDot={{ r: 4, strokeWidth: 1 }} />
                                      )}
@@ -373,34 +444,32 @@ export default function PortfolioOverview() {
                         {positions && positions.length > 0 ? (
                              positions.map((pos) => {
                                 const currentMarketData = marketDataMap[pos.ticker];
-                                // Prefer broker's current price if available, else use fetched data
                                 const currentPriceOrYield = pos.current_price ?? currentMarketData?.price;
-                                const currentYield = pos.yield_value ?? currentMarketData?.yield_value; // Prefer broker yield if available
-                                const marketValue = pos.market_value ?? (currentPriceOrYield !== undefined ? pos.quantity * currentPriceOrYield : undefined);
-                                const gainLoss = pos.unrealized_pnl ?? (marketValue !== undefined ? marketValue - (pos.quantity * pos.averagePrice) : undefined);
-                                const gainLossPercent = (gainLoss !== undefined && (pos.quantity * pos.averagePrice) > 0) ? (gainLoss / (pos.quantity * pos.averagePrice)) * 100 : 0;
+                                const currentYield = pos.yield_value ?? currentMarketData?.yield_value;
+                                const marketValue = pos.market_value ?? (currentPriceOrYield !== undefined && pos.asset_type !== AssetType.OTHER ? pos.quantity * currentPriceOrYield : undefined); // Avoid value calc for yield indices
+                                const costBasis = pos.quantity * pos.averagePrice;
+                                const gainLoss = pos.unrealized_pnl ?? (marketValue !== undefined ? marketValue - costBasis : undefined);
+                                const gainLossPercent = (gainLoss !== undefined && costBasis > 0) ? (gainLoss / costBasis) * 100 : 0;
                                 const isSelected = pos.ticker === chartTicker;
-                                const hasChartData = marketDataMap[pos.ticker] !== undefined || pos.current_price !== undefined || pos.asset_type === AssetType.OTHER; // Assume yield indices can be charted
+                                const isChartable = currentMarketData !== undefined || pos.current_price !== undefined || pos.asset_type === AssetType.OTHER; // Check if data exists or it's a yield index
 
-                                // Format Quantity based on type (e.g., face value for bonds)
                                 const formattedQuantity = pos.asset_type === AssetType.SOVEREIGN_BOND || pos.asset_type === AssetType.TREASURY_BILL
-                                     ? formatCurrency(pos.quantity, true) // Compact format for large face values
+                                     ? formatCurrency(pos.quantity, true)
                                      : pos.quantity.toLocaleString();
 
-                                // Display price or yield based on asset type
-                                const displayPriceOrYield = pos.asset_type === AssetType.OTHER // Assuming OTHER are yield indices for now
+                                const displayPriceOrYield = pos.asset_type === AssetType.OTHER
                                     ? formatPercent(currentPriceOrYield)
                                     : formatCurrency(currentPriceOrYield);
 
                                 return (
                                     <TableRow
                                         key={pos.ticker}
-                                        className={`cursor-pointer hover:bg-muted/50 ${isSelected ? 'bg-primary/10 hover:bg-primary/15' : ''} ${!hasChartData ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                        onClick={() => hasChartData && setChartTicker(pos.ticker)}
-                                        tabIndex={0}
-                                        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && hasChartData && setChartTicker(pos.ticker)}
-                                        aria-disabled={!hasChartData}
-                                        title={!hasChartData ? "Chart data unavailable" : `View chart for ${pos.ticker}`}
+                                        className={`hover:bg-muted/50 ${isSelected ? 'bg-primary/10 hover:bg-primary/15' : ''} ${isChartable ? 'cursor-pointer' : 'opacity-70 cursor-not-allowed'}`}
+                                        onClick={() => isChartable && setChartTicker(pos.ticker)}
+                                        tabIndex={isChartable ? 0 : -1} // Make non-chartable rows non-focusable
+                                        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && isChartable && setChartTicker(pos.ticker)}
+                                        aria-disabled={!isChartable}
+                                        title={!isChartable ? "Chart data unavailable" : `View chart for ${pos.ticker}`}
                                     >
                                         <TableCell className={`font-medium flex items-center gap-1.5 ${isSelected ? 'text-primary' : ''}`}>
                                              {pos.asset_type === AssetType.SOVEREIGN_BOND || pos.asset_type === AssetType.TREASURY_BILL ? <Landmark className="h-3 w-3 text-muted-foreground"/> : pos.asset_type === AssetType.OTHER ? <LineChartIcon className="h-3 w-3 text-muted-foreground"/> : <DollarSign className="h-3 w-3 text-muted-foreground"/>}
@@ -411,20 +480,20 @@ export default function PortfolioOverview() {
                                         <TableCell className="text-right">{formatCurrency(pos.averagePrice)}</TableCell>
                                         <TableCell className="text-right">
                                              {currentPriceOrYield !== undefined ? displayPriceOrYield : <span className="text-xs text-destructive italic">N/A</span>}
-                                             {/* Optionally show yield if price is shown */}
                                              {currentYield !== undefined && pos.asset_type !== AssetType.OTHER && <span className="block text-xs text-muted-foreground">({formatPercent(currentYield)})</span>}
                                          </TableCell>
                                         <TableCell className="text-right font-medium">
-                                             {marketValue !== undefined ? formatCurrency(marketValue) : <span className="text-xs text-destructive italic">N/A</span>}
+                                             {marketValue !== undefined ? formatCurrency(marketValue) : <span className="text-xs text-muted-foreground italic">N/A</span>}
                                         </TableCell>
                                         <TableCell className={`text-right ${getGainLossColor(gainLoss)}`}>
-                                            {gainLoss !== undefined ? ( <> {formatCurrency(gainLoss)} <span className="block text-xs">({formatPercent(gainLossPercent)})</span> </> ) : <span className="text-xs text-destructive italic">N/A</span>}
+                                            {gainLoss !== undefined ? ( <> {formatCurrency(gainLoss)} <span className="block text-xs">({formatPercent(gainLossPercent)})</span> </> ) : <span className="text-xs text-muted-foreground italic">N/A</span>}
                                         </TableCell>
                                     </TableRow>
                                 )
                              })
                         ) : (
-                             <TableRow> <TableCell colSpan={7} className="text-center text-muted-foreground h-24"> {positions === null ? 'Loading holdings...' : 'No holdings found.'} </TableCell> </TableRow>
+                             // Show message only if loading finished and no positions (and no critical error)
+                             !loading && !error && <TableRow> <TableCell colSpan={7} className="text-center text-muted-foreground h-24"> No holdings found. </TableCell> </TableRow>
                          )}
                         </TableBody>
                     </Table>
@@ -436,3 +505,5 @@ export default function PortfolioOverview() {
     </Card>
   );
 }
+
+    

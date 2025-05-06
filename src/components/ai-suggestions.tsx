@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useCallback } from 'react';
@@ -28,7 +29,7 @@ import { useToast } from '@/hooks/use-toast';
 import { analyzeInvestmentOptions, AnalyzeInvestmentOptionsInput, AnalyzeInvestmentOptionsOutput } from '@/ai/flows/analyze-investment-options';
 import { suggestTradingStrategies, SuggestTradingStrategiesInput, SuggestTradingStrategiesOutput } from '@/ai/flows/suggest-trading-strategies';
 import { diversifyPortfolio, DiversifyPortfolioInput, DiversifyPortfolioOutput } from '@/ai/flows/diversify-portfolio';
-import { submitOrder, Order } from '@/services/broker-api'; // submitOrder now requires real API
+import { submitOrder, Order, ValidationError, ApiError, BrokerConnectionError, MarketConditionError, AuthorizationError, ComplianceError, DataProviderError } from '@/services/broker-api'; // Import error types
 import { Skeleton } from '@/components/ui/skeleton';
 
 
@@ -58,25 +59,35 @@ export default function AiSuggestions() {
     setError(null);
     setResult(null);
 
-    const amount = parseFloat(investmentAmount);
-    if (isNaN(amount) || amount <= 0) {
-      setError('Please enter a valid positive investment amount.');
-      setLoading(false);
-      return;
+    let amount: number;
+    try {
+        amount = parseFloat(investmentAmount);
+        if (isNaN(amount) || amount <= 0) {
+          throw new ValidationError('Investment amount must be a positive number.');
+        }
+    } catch(validationError: any) {
+         setError(validationError.message || 'Please enter a valid positive investment amount.');
+         setLoading(false);
+         return;
     }
+
 
     const riskToleranceForSuggest = validRiskLevels.includes(riskProfile as RiskLevel)
         ? riskProfile as RiskLevel
-        : 'medium';
+        : 'medium'; // Default if invalid selection for 'suggest'
 
     try {
       let aiResponse: AiResult = null;
       console.log(`Initiating AI Task: ${selectedTask}`);
-      // These AI flow calls might depend on real data fetched within them (e.g., getInstruments)
-      // Ensure those underlying API calls are also implemented or handle potential errors.
+
+      // --- AI Flow Calls with Error Handling ---
       switch (selectedTask) {
         case 'analyze':
           const analyzeInput: AnalyzeInvestmentOptionsInput = { riskProfile, financialGoals, investmentAmount: amount };
+          // Basic input validation before calling the flow
+          if (!analyzeInput.riskProfile || !analyzeInput.financialGoals) {
+             throw new ValidationError("Risk profile and financial goals are required for analysis.");
+          }
           aiResponse = await analyzeInvestmentOptions(analyzeInput);
           break;
         case 'suggest':
@@ -85,79 +96,131 @@ export default function AiSuggestions() {
             riskTolerance: riskToleranceForSuggest,
             preferredInstruments: preferredInstruments ? preferredInstruments.split(',').map(s => s.trim()).filter(s => s) : undefined,
           };
+           // Basic input validation
+           if (!suggestInput.riskTolerance) {
+              throw new ValidationError("Risk tolerance is required for suggesting strategies.");
+           }
           aiResponse = await suggestTradingStrategies(suggestInput);
           break;
         case 'diversify':
           const diversifyInput: DiversifyPortfolioInput = { investmentAmount: amount, riskTolerance: riskProfile };
+           // Basic input validation
+           if (!diversifyInput.riskTolerance) {
+              throw new ValidationError("Risk tolerance is required for diversification.");
+           }
           aiResponse = await diversifyPortfolio(diversifyInput);
           break;
         default:
+             // Should not happen with TypeScript, but good practice
              throw new Error(`Unknown AI task selected: ${selectedTask}`);
       }
        console.log("AI Task completed successfully.");
+       if (!aiResponse) {
+           // Handle cases where the flow might return null/undefined unexpectedly
+           throw new Error("AI flow returned no response.");
+       }
       setResult(aiResponse);
     } catch (err: any) {
       console.error(`AI Task (${selectedTask}) failed:`, err);
-      // Provide more specific error guidance if possible
-      let detailedError = `Failed to generate suggestions: ${err.message || 'Please try again.'}`;
-      if (err.message?.includes('API not configured') || err.message?.includes('not implemented')) {
-           detailedError += ' Check API configurations in services/broker-api.ts and environment variables.';
-       }
+      let detailedError = `Failed to generate suggestions.`;
+      if (err instanceof ValidationError) {
+         detailedError = `Input Error: ${err.message}`;
+      } else if (err instanceof DataProviderError) {
+          detailedError = `Data Error: ${err.message}. Check API configurations or data availability.`;
+      } else if (err instanceof ApiError) {
+          detailedError = `API Error: ${err.message}. Please try again later.`;
+      } else {
+          detailedError += ` ${err.message || 'An unexpected error occurred.'}`;
+      }
       setError(detailedError);
        setResult(null);
+       toast({ // Add toast notification for errors
+           variant: "destructive",
+           title: "Suggestion Generation Failed",
+           description: detailedError,
+       });
     } finally {
       setLoading(false);
     }
-  }, [selectedTask, riskProfile, financialGoals, investmentAmount, preferredInstruments, toast]);
+  }, [selectedTask, riskProfile, financialGoals, investmentAmount, preferredInstruments, toast]); // Added toast to dependencies
 
    const handleInitiateOrder = useCallback((orderDetails: OrderDetails) => {
     console.log("Initiating order for:", orderDetails);
-    // Check if submitOrder is likely implemented (conceptual check)
-    if (!process.env.REAL_BROKER_API_KEY) {
+    // Basic check if the underlying API *might* be configured (not foolproof)
+    if (USE_MOCK_API) {
         toast({
             variant: "destructive",
-            title: "Broker API Not Configured",
-            description: "Cannot place orders without configuring Broker API keys in environment variables.",
+            title: "Using Mock API",
+            description: "Order placement is simulated. Configure REAL APIs for actual trading.",
         });
-        return;
+        // Allow proceeding in mock mode for testing the dialog flow
+    } else if (!REAL_BROKER_API_KEY || !REAL_BROKER_API_ENDPOINT) {
+         toast({
+            variant: "destructive",
+            title: "Broker API Not Configured",
+            description: "Cannot place real orders without configuring Broker API keys/endpoint in environment variables.",
+         });
+        return; // Prevent opening dialog if real API isn't configured
     }
     setCurrentOrderDetails(orderDetails);
     setIsOrderDialogOpen(true);
-  }, [toast]); // Added toast dependency
+  }, [toast]);
 
    const handleConfirmOrder = useCallback(async (order: Order) => {
     setIsOrderDialogOpen(false);
     toast({
        title: 'Submitting Order...',
-       description: `${order.type.toUpperCase()} ${order.quantity} shares of ${order.ticker}`,
+       description: `${order.type.toUpperCase()} ${order.quantity} ${order.ticker}`,
      });
      console.log("Submitting order:", order);
     try {
-      // This now calls the potentially real (but maybe unimplemented) submitOrder
+      // This now calls the potentially real submitOrder with integrated error handling
       const submittedOrder = await submitOrder(order);
       console.log("Order submitted response:", submittedOrder);
       toast({
-        title: 'Order Submitted Successfully!',
-        description: `Your order for ${order.ticker} (${submittedOrder.id || 'N/A'}) is ${submittedOrder.status || 'pending'}.`,
+        title: `Order ${submittedOrder.status || 'Submitted'}`,
+        description: `Your order for ${order.ticker} (ID: ${submittedOrder.id || 'N/A'}) is ${submittedOrder.status || 'pending'}.`,
         variant: 'default',
       });
       // Optionally, trigger a refresh of portfolio data here
     } catch (err: any) {
       console.error('Order submission failed:', err);
+      let errorTitle = 'Order Submission Failed';
+      let errorDesc = `Could not place order for ${order.ticker}.`;
+
+       if (err instanceof ValidationError) {
+           errorTitle = 'Invalid Order';
+           errorDesc = `Validation Error: ${err.message}`;
+       } else if (err instanceof MarketConditionError) {
+           errorTitle = 'Market Condition Error';
+           errorDesc = `Order rejected: ${err.message}`;
+       } else if (err instanceof BrokerConnectionError || err instanceof AuthorizationError) {
+           errorTitle = 'Broker Connection Issue';
+           errorDesc = `Connection Error: ${err.message}. Check API status or credentials.`;
+       } else if (err instanceof ComplianceError) {
+           errorTitle = 'Compliance Issue';
+           errorDesc = `Order Blocked: ${err.message}.`;
+       } else if (err instanceof ApiError) {
+           errorTitle = 'API Error';
+           errorDesc = `Broker API error: ${err.message}.`;
+       } else {
+           errorDesc += ` ${err.message || 'Unknown error.'}`;
+       }
+
       toast({
-        title: 'Order Submission Failed',
-        description: `Could not place order for ${order.ticker}. ${err.message || 'Ensure Broker API is implemented correctly.'}`,
+        title: errorTitle,
+        description: errorDesc,
         variant: 'destructive',
       });
     }
     setCurrentOrderDetails(null); // Clear details after submission attempt
-   }, [toast]);
+   }, [toast]); // Added toast
 
-   // Extracted Result Rendering Logic (remains largely the same, but Buy button action now has implications)
+   // Extracted Result Rendering Logic
    const RenderResultContent = useCallback(({ resultData, totalAmount }: { resultData: AiResult, totalAmount: number }) => {
     if (!resultData) return null;
 
-    // Type guard for AnalyzeInvestmentOptionsOutput
+    // --- AnalyzeInvestmentOptionsOutput ---
     if ('investmentOptions' in resultData && Array.isArray(resultData.investmentOptions)) {
       return (
         <div className="space-y-4">
@@ -166,18 +229,24 @@ export default function AiSuggestions() {
              <ul className="space-y-3">
                 {resultData.investmentOptions.map((opt, index) => {
                  const suggestedAmount = totalAmount * (opt.percentage / 100);
+                 // Basic validation on option data
+                 if (!opt.ticker || !opt.name || opt.percentage === undefined) {
+                     console.warn("Skipping invalid investment option:", opt);
+                     return null;
+                 }
                  return (
                     <li key={`${opt.ticker}-${index}`} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b pb-3 last:border-b-0">
                        <div className="flex-1">
                         <strong className="block">{opt.name} ({opt.ticker})</strong>
-                        <span className="text-sm">Suggested Allocation: {opt.percentage}% (~${suggestedAmount.toFixed(0)})</span>
-                        <p className="text-sm text-muted-foreground mt-1">{opt.reason}</p>
+                        <span className="text-sm">Suggested Allocation: {opt.percentage.toFixed(1)}% (~${suggestedAmount.toFixed(0)})</span>
+                        <p className="text-sm text-muted-foreground mt-1">{opt.reason || 'N/A'}</p>
                       </div>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => handleInitiateOrder({ ticker: opt.ticker, initialOrderType: 'buy', suggestedAmount: suggestedAmount })}
-                        title={`Buy ${opt.ticker}`}
+                        title={`Initiate Buy Order for ${opt.ticker}`}
+                        aria-label={`Initiate Buy Order for ${opt.ticker}`}
                         className="w-full sm:w-auto flex-shrink-0"
                       >
                         <ShoppingCart className="mr-2 h-4 w-4" /> Buy
@@ -187,78 +256,96 @@ export default function AiSuggestions() {
                 })}
              </ul>
           </div>
-           <div>
-               <h4 className="font-semibold mb-2">Summary:</h4>
-               <p className="text-sm whitespace-pre-wrap">{resultData.summary}</p>
-           </div>
+           {resultData.summary && ( // Only show summary if it exists
+             <div>
+                 <h4 className="font-semibold mb-2">Summary:</h4>
+                 <p className="text-sm whitespace-pre-wrap">{resultData.summary}</p>
+             </div>
+           )}
         </div>
       );
     }
 
-    // Type guard for SuggestTradingStrategiesOutput
+    // --- SuggestTradingStrategiesOutput ---
     if ('strategies' in resultData && Array.isArray(resultData.strategies)) {
        return (
         <div className="space-y-4">
            <div>
                <h4 className="font-semibold mb-2">Suggested Strategies:</h4>
                <div className="space-y-4">
-                 {resultData.strategies.map((strat, index) => (
-                   <div key={`${strat.name}-${index}`} className="p-3 border rounded-md bg-muted/30">
-                     <div className="flex justify-between items-center mb-1">
-                        <h5 className="font-medium">{strat.name}</h5>
-                        <span className={`text-xs px-1.5 py-0.5 rounded capitalize border ${
-                            strat.riskLevel === 'high' ? 'border-red-500/50 bg-red-500/10 text-red-600' :
-                            strat.riskLevel === 'medium' ? 'border-orange-500/50 bg-orange-500/10 text-orange-600' :
-                            'border-green-500/50 bg-green-500/10 text-green-600'
-                        }`}>{strat.riskLevel} risk</span>
-                     </div>
-                     <p className="text-sm text-muted-foreground mb-1">{strat.description}</p>
-                     <p className="text-sm">Instruments: <span className="font-mono text-xs bg-muted px-1 rounded">{strat.instruments.join(', ')}</span></p>
-                     <p className="text-sm">Est. Return: <span className="font-semibold">{(strat.expectedReturn || 0).toFixed(2)}%</span></p>
-                      <Button size="sm" variant="outline" className="mt-2" disabled>Execute Strategy (Needs Impl)</Button>
-                   </div>
-                 ))}
+                 {resultData.strategies.map((strat, index) => {
+                   // Basic validation on strategy data
+                   if (!strat.name || !strat.instruments || !strat.riskLevel) {
+                        console.warn("Skipping invalid trading strategy:", strat);
+                        return null;
+                   }
+                   return (
+                       <div key={`${strat.name}-${index}`} className="p-3 border rounded-md bg-muted/30">
+                         <div className="flex justify-between items-center mb-1">
+                            <h5 className="font-medium">{strat.name}</h5>
+                            <span className={`text-xs px-1.5 py-0.5 rounded capitalize border ${
+                                strat.riskLevel === 'high' ? 'border-red-500/50 bg-red-500/10 text-red-600' :
+                                strat.riskLevel === 'medium' ? 'border-orange-500/50 bg-orange-500/10 text-orange-600' :
+                                'border-green-500/50 bg-green-500/10 text-green-600'
+                            }`}>{strat.riskLevel} risk</span>
+                         </div>
+                         <p className="text-sm text-muted-foreground mb-1">{strat.description || 'No description.'}</p>
+                         <p className="text-sm">Instruments: <span className="font-mono text-xs bg-muted px-1 rounded">{strat.instruments.join(', ')}</span></p>
+                         <p className="text-sm">Est. Return: <span className="font-semibold">{(strat.expectedReturn || 0).toFixed(2)}%</span></p>
+                          {/* Placeholder: Strategy execution requires complex backend logic */}
+                          <Button size="sm" variant="outline" className="mt-2" disabled title="Strategy execution not implemented">Execute Strategy</Button>
+                       </div>
+                   );
+                 })}
                </div>
            </div>
-           <div>
-                <h4 className="font-semibold mb-2">Summary:</h4>
-                <p className="text-sm whitespace-pre-wrap">{resultData.summary}</p>
-            </div>
+            {resultData.summary && ( // Only show summary if it exists
+               <div>
+                   <h4 className="font-semibold mb-2">Summary:</h4>
+                   <p className="text-sm whitespace-pre-wrap">{resultData.summary}</p>
+               </div>
+            )}
         </div>
       );
     }
 
-     // Type guard for DiversifyPortfolioOutput
+     // --- DiversifyPortfolioOutput ---
      if ('portfolioAllocation' in resultData && typeof resultData.portfolioAllocation === 'object') {
       const allocation = resultData.portfolioAllocation;
       return (
         <div className="space-y-4">
-           <div>
-               <h4 className="font-semibold mb-2">Diversification Strategy Explained:</h4>
-               <p className="text-sm text-muted-foreground mb-4 whitespace-pre-wrap">{resultData.strategyExplanation}</p>
-           </div>
+           {resultData.strategyExplanation && ( // Show explanation if exists
+             <div>
+                 <h4 className="font-semibold mb-2">Diversification Strategy Explained:</h4>
+                 <p className="text-sm text-muted-foreground mb-4 whitespace-pre-wrap">{resultData.strategyExplanation}</p>
+             </div>
+            )}
            <div>
                <h4 className="font-semibold mb-2">Recommended Allocation:</h4>
                 {Object.keys(allocation).length > 0 ? (
                    <ul className="list-disc pl-5 space-y-1">
                         {Object.entries(allocation).map(([asset, percentage]) => (
                           <li key={asset}>
-                            <strong>{asset}:</strong> {percentage.toFixed(2)}%
+                            <strong>{asset}:</strong> {percentage?.toFixed(2) ?? 'N/A'}%
                           </li>
                         ))}
                    </ul>
                 ) : (
-                     <p className="text-sm text-muted-foreground italic">No specific allocation provided.</p>
+                     <p className="text-sm text-muted-foreground italic">No specific allocation provided by AI.</p>
                 )}
-                  <Button size="sm" variant="outline" className="mt-3" disabled>Apply Diversification (Needs Impl)</Button>
+                  {/* Placeholder: Applying diversification requires complex backend logic */}
+                  <Button size="sm" variant="outline" className="mt-3" disabled title="Applying diversification not implemented">Apply Diversification</Button>
             </div>
         </div>
       );
     }
 
+     // Fallback for unexpected format
      console.warn("Unexpected AI result format:", resultData);
-    return <p className="text-destructive">Could not display the AI result due to an unexpected format.</p>;
-   }, [handleInitiateOrder]);
+     // Display an error message within the UI if format is wrong
+     setError("Could not display the AI result due to an unexpected format.");
+    return null; // Return null here, error is handled by the main error display logic
+   }, [handleInitiateOrder, setError]); // Added setError
 
 
   return (
@@ -297,9 +384,11 @@ export default function AiSuggestions() {
                   <SelectValue placeholder="Select risk profile" />
                 </SelectTrigger>
                 <SelectContent>
+                  {/* Combine related options for clarity */}
                   <SelectItem value="conservative">Conservative (Low Risk)</SelectItem>
                   <SelectItem value="moderate">Moderate (Medium Risk)</SelectItem>
                   <SelectItem value="aggressive">Aggressive (High Risk)</SelectItem>
+                   {/* Keep 'low', 'medium', 'high' if specifically required by certain flows */}
                    <SelectItem value="low">Low</SelectItem>
                    <SelectItem value="medium">Medium</SelectItem>
                    <SelectItem value="high">High</SelectItem>
@@ -317,6 +406,7 @@ export default function AiSuggestions() {
                 min="1"
                 disabled={loading}
                 aria-label="Investment amount in dollars"
+                required // Added required
               />
             </div>
           </div>
@@ -333,6 +423,7 @@ export default function AiSuggestions() {
                 disabled={loading}
                 rows={3}
                 aria-label="Describe your financial goals"
+                required // Added required for analysis
               />
             </div>
           )}
@@ -364,7 +455,7 @@ export default function AiSuggestions() {
 
             {/* Error Display */}
            {error && (
-            <Alert variant="destructive">
+            <Alert variant="destructive" className="mt-4"> {/* Added margin top */}
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Generation Failed</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
@@ -384,21 +475,21 @@ export default function AiSuggestions() {
                       <Skeleton className="h-4 w-full" />
                       <Skeleton className="h-4 w-full" />
                  </div>
-             ) : result ? (
+             ) : result ? ( // Only render result if no error occurred during generation
                  <>
                      <h3 className="text-lg font-semibold mb-3">AI Generated Result:</h3>
                      <div className="p-4 bg-muted/50 rounded-md border">
                          <RenderResultContent resultData={result} totalAmount={parseFloat(investmentAmount) || 0} />
                      </div>
                  </>
-             ) : !error ? (
+             ) : !error ? ( // Show prompt only if not loading and no error/result yet
                  <p className="text-center text-muted-foreground py-4">Enter details and click "Generate" for AI insights (requires API setup).</p>
-             ) : null /* Error is shown above */ }
+             ) : null /* Error is shown above if applicable */ }
            </div>
         </CardContent>
       </Card>
 
-       {/* Order Dialog - Now relies on potentially real getMarketData and submitOrder */}
+       {/* Order Dialog - Now handles potential errors from getMarketData */}
         <OrderDialog
             isOpen={isOrderDialogOpen}
             onOpenChange={setIsOrderDialogOpen}
@@ -408,3 +499,13 @@ export default function AiSuggestions() {
     </>
   );
 }
+
+// Helper variables declared outside component to avoid redeclaration on render
+const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API !== 'false';
+const REAL_BROKER_API_KEY = process.env.REAL_BROKER_API_KEY;
+const REAL_BROKER_API_ENDPOINT = process.env.REAL_BROKER_API_ENDPOINT;
+const REAL_FINANCIAL_DATA_API_ENDPOINT = process.env.REAL_FINANCIAL_DATA_API_ENDPOINT;
+const REAL_FINANCIAL_DATA_API_KEY = process.env.REAL_FINANCIAL_DATA_API_KEY;
+const NEXT_PUBLIC_BACKEND_API_ENDPOINT = process.env.NEXT_PUBLIC_BACKEND_API_ENDPOINT;
+
+    
