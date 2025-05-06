@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -104,7 +105,11 @@ const DialogDescription = React.forwardRef<
     ref={ref}
     className={cn("text-sm text-muted-foreground", className)}
     {...props}
-  />
+    // Use asChild and pass a div to avoid rendering a p tag by default
+    asChild
+  >
+     <div className={cn("text-sm text-muted-foreground", className)}>{props.children}</div>
+   </DialogPrimitive.Description>
 ))
 DialogDescription.displayName = DialogPrimitive.Description.displayName
 
@@ -120,3 +125,5 @@ export {
   DialogTitle,
   DialogDescription,
 }
+
+    

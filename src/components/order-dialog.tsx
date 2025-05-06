@@ -2,7 +2,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react'; // Added useCallback
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getMarketData, type MarketData, type Order, ApiError, DataProviderError, ValidationError } from '@/services/broker-api'; // Import error types
+import { getMarketData, type MarketData, type Order, ApiError, DataProviderError, ValidationError, BrokerConnectionError, AuthorizationError } from '@/services/broker-api'; // Import error types
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast'; // Import useToast
 
@@ -41,6 +41,14 @@ export function OrderDialog({ isOpen, onOpenChange, orderDetails, onConfirmOrder
   const [marketData, setMarketData] = useState<MarketData | null>(null);
   const [loadingMarketData, setLoadingMarketData] = useState(false);
   const [error, setError] = useState<string | null>(null); // Error state specific to this dialog
+
+  // Helper function for currency formatting
+   const formatCurrency = useCallback((value: number | string | undefined) => {
+    const numValue = Number(value);
+     if (isNaN(numValue)) return '$--.--';
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(numValue);
+  }, []);
+
 
   useEffect(() => {
     if (isOpen && orderDetails) {
@@ -82,6 +90,10 @@ export function OrderDialog({ isOpen, onOpenChange, orderDetails, onConfirmOrder
               errorMsg = `Data Error: ${err.message}. Check API status or ticker validity.`;
           } else if (err instanceof ApiError) {
               errorMsg = `API Error: ${err.message}.`;
+          } else if (err instanceof BrokerConnectionError) {
+              errorMsg = `Broker Connection Error: ${err.message}`;
+          } else if (err instanceof AuthorizationError) {
+              errorMsg = `Authorization Error: ${err.message}`;
           } else {
               errorMsg += ` ${err.message || 'Unknown error.'}`;
           }
@@ -106,7 +118,7 @@ export function OrderDialog({ isOpen, onOpenChange, orderDetails, onConfirmOrder
 
     if (!orderDetails) {
       validationError = 'Order details missing.';
-    } else if (!marketData) {
+    } else if (!marketData && !loadingMarketData) { // Check if data is loaded *and* not loading
       validationError = 'Cannot confirm order without current market price.';
     } else {
         const numQuantity = parseInt(quantity);
@@ -139,13 +151,6 @@ export function OrderDialog({ isOpen, onOpenChange, orderDetails, onConfirmOrder
      : 0;
 
 
-   const formatCurrency = (value: number | string | undefined) => {
-    const numValue = Number(value);
-     if (isNaN(numValue)) return '$--.--';
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(numValue);
-  };
-
-
   if (!orderDetails) return null; // Don't render if no details
 
   const isConfirmDisabled = loadingMarketData || !marketData || !!error || !quantity || parseInt(quantity) <= 0;
@@ -155,15 +160,18 @@ export function OrderDialog({ isOpen, onOpenChange, orderDetails, onConfirmOrder
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Place Order for {orderDetails.ticker}</DialogTitle>
-          <DialogDescription>
+           {/* Moved dynamic price/loading state outside DialogDescription */}
+           <div className="text-sm text-muted-foreground mt-1 h-5"> {/* Added fixed height to prevent layout shift */}
+              {loadingMarketData ? (
+                 <div className="space-y-1"><Skeleton className="h-4 w-32" /></div>
+              ) : marketData ? (
+                 <span className="block"> Current Price: {formatCurrency(marketData.price)}</span>
+              ) : error ? (
+                  <span className="block text-destructive text-xs font-medium">Price unavailable.</span>
+              ) : null }
+           </div>
+           <DialogDescription>
             Confirm the details for your {orderType} order.
-            {loadingMarketData ? (
-                <Skeleton className="h-4 w-32 mt-1" />
-            ) : marketData ? (
-                <span className="block mt-1"> Current Price: {formatCurrency(marketData.price)}</span>
-            ) : error ? (
-                 <span className="block mt-1 text-destructive text-xs font-medium">Price unavailable.</span> // More concise error here
-            ) : null }
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
