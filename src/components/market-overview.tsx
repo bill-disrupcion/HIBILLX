@@ -1,4 +1,5 @@
-'use client';
+
+'use client'; // Explicitly mark as client component
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -12,7 +13,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getMarketData, getTopMovers, type Instrument, type MarketData } from '@/services/broker-api';
-import { TrendingUp, TrendingDown, AlertTriangle, Minus, Newspaper } from 'lucide-react'; // Added Newspaper
+import { TrendingUp, TrendingDown, AlertTriangle, Minus, Newspaper } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast'; // Import useToast
 
 interface IndexData extends MarketData {
   name: string;
@@ -24,6 +26,7 @@ interface MoversData {
 }
 
 export default function MarketOverview() {
+  const { toast } = useToast(); // Initialize toast
   const [indices, setIndices] = useState<IndexData[] | null>(null);
   const [movers, setMovers] = useState<MoversData | null>(null);
   const [loadingIndices, setLoadingIndices] = useState(true);
@@ -35,7 +38,6 @@ export default function MarketOverview() {
 
   const formatCurrency = useCallback((value: number | undefined) => {
     if (value === undefined || isNaN(value)) return '--.--';
-    // Use Intl.NumberFormat for better localization and formatting
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
   }, []);
 
@@ -46,8 +48,8 @@ export default function MarketOverview() {
 
   const getChangeColor = (value: number | undefined) => {
     if (value === undefined || isNaN(value)) return 'text-muted-foreground';
-    if (value > 0) return 'text-green-600 dark:text-green-500'; // Enhanced contrast
-    if (value < 0) return 'text-red-600 dark:text-red-500'; // Enhanced contrast
+    if (value > 0) return 'text-green-600 dark:text-green-500';
+    if (value < 0) return 'text-red-600 dark:text-red-500';
     return 'text-muted-foreground';
   };
 
@@ -65,7 +67,6 @@ export default function MarketOverview() {
       setLoadingIndices(true);
       setErrorIndices(null);
       try {
-        // Fetch data for each index concurrently
         const indexDataPromises = indexTickers.map(async (ticker) => {
           try {
             const data = await getMarketData(ticker);
@@ -77,36 +78,28 @@ export default function MarketOverview() {
             return { ...data, name: nameMap[ticker] || ticker };
           } catch (individualError: any) {
              console.error(`Failed to fetch index data for ${ticker}:`, individualError);
-             // Propagate the error to be caught by the outer catch block
              throw new Error(`Failed to load data for ${ticker}. ${individualError.message || ''}`);
           }
         });
-        // Wait for all promises to settle (resolve or reject)
         const results = await Promise.allSettled(indexDataPromises);
 
-        // Filter successful results
         const fetchedIndices = results
            .filter((result): result is PromiseFulfilledResult<IndexData> => result.status === 'fulfilled')
            .map(result => result.value);
 
-         // If any promise was rejected, set an error state
          const rejectedResults = results.filter(result => result.status === 'rejected');
          if (rejectedResults.length > 0) {
-             // Combine error messages or take the first one
              const firstErrorMessage = (rejectedResults[0] as PromiseRejectedResult).reason?.message || 'Failed to load some index data.';
               setErrorIndices(firstErrorMessage);
-             // Set partially fetched data if some succeeded
              setIndices(fetchedIndices.length > 0 ? fetchedIndices : null);
          } else {
             setIndices(fetchedIndices);
          }
 
       } catch (err: any) {
-        // This catch block will handle errors from Promise.allSettled itself or if an error occurs outside the map
         console.error("General error fetching index data:", err);
-         // Ensure error state reflects failure
         setErrorIndices(err.message || 'An unexpected error occurred while loading index data.');
-        setIndices(null); // Set indices to null on general failure
+        setIndices(null);
       } finally {
         setLoadingIndices(false);
       }
@@ -120,7 +113,7 @@ export default function MarketOverview() {
       setLoadingMovers(true);
       setErrorMovers(null);
       try {
-        const fetchedMovers = await getTopMovers(5); // Fetch top 5 gainers/losers
+        const fetchedMovers = await getTopMovers(5);
         setMovers(fetchedMovers);
       } catch (err: any) {
         console.error("Failed to fetch market movers:", err);
@@ -133,8 +126,29 @@ export default function MarketOverview() {
     fetchMovers();
   }, []); // Runs once on mount
 
+  // Placeholder handler for clicking on an index or mover
+  const handleItemClick = useCallback((ticker: string, name: string) => {
+    // TODO: Implement navigation or modal display for detailed view
+    console.log(`Clicked on ${name} (${ticker})`);
+    toast({
+        title: `Viewing ${name} (${ticker})`,
+        description: "Detailed view/chart functionality coming soon.",
+    });
+    // Example: router.push(`/market/${ticker}`);
+    // Or: setModalData({ ticker, name }); setIsModalOpen(true);
+  }, [toast]); // Added toast dependency
+
+
   const renderIndexCard = (index: IndexData) => (
-     <div key={index.ticker} className="flex flex-col p-3 border rounded-md bg-card shadow-sm hover:shadow-md transition-shadow">
+     <div
+         key={index.ticker}
+         className="flex flex-col p-3 border rounded-md bg-card shadow-sm hover:shadow-lg hover:border-primary/50 transition-all duration-150 cursor-pointer"
+         onClick={() => handleItemClick(index.ticker, index.name)}
+         tabIndex={0}
+         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleItemClick(index.ticker, index.name)}
+         role="button"
+         aria-label={`View details for ${index.name} (${index.ticker})`}
+     >
          <span className="text-xs font-medium text-muted-foreground">{index.name} ({index.ticker})</span>
          <span className="text-lg font-semibold mt-1">{formatCurrency(index.price)}</span>
          <div className={`flex items-center text-sm mt-0.5 ${getChangeColor(index.changePercent)}`}>
@@ -152,7 +166,7 @@ export default function MarketOverview() {
                 <div className="space-y-2">
                     {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
                 </div>
-           ) : errorMovers && title === 'Top Gainers' ? ( // Only show error once for movers section
+           ) : errorMovers && title === 'Top Gainers' ? (
                <Alert variant="destructive" className="mt-2">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertTitle>Movers Error</AlertTitle>
@@ -171,7 +185,15 @@ export default function MarketOverview() {
                   </TableHeader>
                   <TableBody>
                       {data.map((mover) => (
-                          <TableRow key={mover.ticker}>
+                          <TableRow
+                              key={mover.ticker}
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => handleItemClick(mover.ticker, mover.name)}
+                              tabIndex={0}
+                              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleItemClick(mover.ticker, mover.name)}
+                              role="button"
+                              aria-label={`View details for ${mover.name} (${mover.ticker})`}
+                          >
                               <TableCell className="font-medium p-1.5">{mover.ticker}</TableCell>
                               <TableCell className="text-right p-1.5">{formatCurrency(mover.price)}</TableCell>
                               <TableCell className={`text-right p-1.5 font-medium ${getChangeColor(mover.changePercent)}`}>
@@ -190,7 +212,7 @@ export default function MarketOverview() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center">
-           <Newspaper className="mr-2 h-5 w-5 text-primary" /> Market Overview {/* Changed icon */}
+           <Newspaper className="mr-2 h-5 w-5 text-primary" /> Market Overview
         </CardTitle>
         <CardDescription>Live market trends and top movers.</CardDescription>
       </CardHeader>
@@ -208,19 +230,19 @@ export default function MarketOverview() {
                         </div>
                     ))}
                  </div>
-            ) : errorIndices ? ( // Display error clearly if fetching indices failed
+            ) : errorIndices ? (
                  <Alert variant="destructive">
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Indices Error</AlertTitle>
                     <AlertDescription>{errorIndices}</AlertDescription>
                  </Alert>
-            ) : indices && indices.length > 0 ? ( // Only render if indices are loaded and no error
+            ) : indices && indices.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                    {indices.map(renderIndexCard)}
                 </div>
-            ) : !errorIndices ? ( // Show unavailable message only if there wasn't an error
+            ) : !errorIndices ? (
                 <p className="text-sm text-muted-foreground italic">Index data unavailable.</p>
-            ) : null /* Error is already handled above */}
+            ) : null }
         </div>
 
         {/* Top Movers */}

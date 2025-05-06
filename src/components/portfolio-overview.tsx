@@ -21,7 +21,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 import { getPositions, type Position, getMarketData, type MarketData, getHistoricalData } from '@/services/broker-api';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TrendingUp, TrendingDown, Minus, Info, AlertTriangle } from 'lucide-react'; // Added AlertTriangle
+import { TrendingUp, TrendingDown, Minus, Info, AlertTriangle, LineChart } from 'lucide-react'; // Added LineChart
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert" // Added Alert
@@ -191,6 +191,7 @@ export default function PortfolioOverview() {
       setChartError(null); // Clear previous chart errors
       setChartData([]);    // Clear previous chart data
       try {
+        console.log(`Fetching chart data for: ${chartTicker}, range: ${chartRange}`); // Debug log
         const history = await getHistoricalData(chartTicker, chartRange);
         // Basic validation on fetched data
          if (!Array.isArray(history) || history.length === 0) {
@@ -212,20 +213,20 @@ export default function PortfolioOverview() {
 
 
   const renderGainLossIcon = (value: number) => {
-    if (value > 0) return <TrendingUp className="h-4 w-4 text-green-500" />;
-    if (value < 0) return <TrendingDown className="h-4 w-4 text-red-500" />;
+    if (value > 0) return <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-500" />;
+    if (value < 0) return <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-500" />;
     return <Minus className="h-4 w-4 text-muted-foreground" />;
    }
 
    const getGainLossColor = (value: number) => {
-     if (value > 0) return "text-green-500";
-     if (value < 0) return "text-red-500";
+     if (value > 0) return "text-green-600 dark:text-green-500";
+     if (value < 0) return "text-red-600 dark:text-red-500";
      return "text-muted-foreground";
    }
 
    // Determine if we should show an error/warning alert
    const shouldShowAlert = error || partialDataWarning;
-   const alertVariant = error ? "destructive" : "default";
+   const alertVariant = error ? "destructive" : "warning"; // Use warning for partial data
    const alertTitle = error ? "Error Loading Portfolio" : "Partial Data Loaded";
    const alertDescription = error || partialDataWarning;
 
@@ -235,7 +236,7 @@ export default function PortfolioOverview() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
            <div>
               <CardTitle>Portfolio Overview</CardTitle>
-              <CardDescription>Your current investment status.</CardDescription>
+              <CardDescription>Your current investment status and performance.</CardDescription>
            </div>
             {/* Chart Range Selector - Disable if loading or error */}
             <Select value={chartRange} onValueChange={setChartRange} disabled={loading || !!error || loadingChart}>
@@ -270,7 +271,7 @@ export default function PortfolioOverview() {
           </div>
         ) : shouldShowAlert ? ( // Show alert if there's a general error OR a partial data warning
            // Clear Error/Warning Display
-            <Alert variant={alertVariant} className={!error ? 'border-yellow-500/50 text-yellow-700 dark:border-yellow-600/50 dark:text-yellow-300 [&>svg]:text-yellow-500 dark:[&>svg]:text-yellow-500' : ''}>
+            <Alert variant={alertVariant}>
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>{alertTitle}</AlertTitle>
               <AlertDescription>{alertDescription}</AlertDescription>
@@ -308,117 +309,122 @@ export default function PortfolioOverview() {
             </div>
 
             {/* Performance Chart Section */}
-             <div className="h-[250px] w-full relative border rounded-md p-2">
-                 {loadingChart ? (
-                     <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10 rounded-md">
-                         <Skeleton className="h-full w-full" />
-                          <span className="absolute text-sm text-muted-foreground">Loading chart data...</span>
-                     </div>
-                 ) : chartError ? (
-                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-10 rounded-md text-center p-4">
-                         <AlertTriangle className="h-6 w-6 text-destructive mb-2" />
-                        <p className="text-sm font-medium text-destructive">Chart Error</p>
-                        <p className="text-xs text-destructive">{chartError}</p>
-                    </div>
-                 ) : chartData.length === 0 || !chartTicker ? (
-                      <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10 rounded-md">
-                        <p className="text-sm text-muted-foreground p-4 text-center">
-                            {chartTicker ? `No historical data available for ${chartTicker}.` : 'Select a position or ensure data is loaded to view chart.'}
-                        </p>
-                    </div>
-                 ) : (
-                     // Render Chart only if data is available
-                     <>
-                         <ChartContainer config={chartConfig} className="h-full w-full">
-                             <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                  <XAxis
-                                    dataKey="date"
-                                    tickLine={false}
-                                    axisLine={false}
-                                    tickMargin={8}
-                                     tickFormatter={(value, index) => {
-                                        try {
-                                            const date = new Date(value + 'T00:00:00Z'); // Use Z for UTC to avoid timezone issues
-                                            if (isNaN(date.getTime())) return ''; // Invalid date
-                                            const dayOfMonth = date.getUTCDate();
-                                            const numPoints = chartData.length; // Get actual number of points
+             <div className="space-y-2">
+                <h3 className="text-lg font-semibold flex items-center">
+                   <LineChart className="mr-2 h-5 w-5 text-primary"/> Performance Chart: {chartTicker || 'Select Position'}
+                </h3>
+                <div className="h-[250px] w-full relative border rounded-md p-2">
+                    {loadingChart ? (
+                        <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10 rounded-md">
+                            <Skeleton className="h-full w-full" />
+                             <span className="absolute text-sm text-muted-foreground">Loading chart data...</span>
+                        </div>
+                    ) : chartError ? (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-10 rounded-md text-center p-4">
+                            <AlertTriangle className="h-6 w-6 text-destructive mb-2" />
+                           <p className="text-sm font-medium text-destructive">Chart Error</p>
+                           <p className="text-xs text-destructive">{chartError}</p>
+                       </div>
+                    ) : chartData.length === 0 || !chartTicker ? (
+                         <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10 rounded-md">
+                           <p className="text-sm text-muted-foreground p-4 text-center">
+                               {chartTicker ? `No historical data available for ${chartTicker}.` : 'Select a position from the table below to view its chart.'}
+                           </p>
+                       </div>
+                    ) : (
+                        // Render Chart only if data is available
+                        <>
+                            <ChartContainer config={chartConfig} className="h-full w-full">
+                                <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                     <XAxis
+                                       dataKey="date"
+                                       tickLine={false}
+                                       axisLine={false}
+                                       tickMargin={8}
+                                        tickFormatter={(value, index) => {
+                                           try {
+                                               const date = new Date(value + 'T00:00:00Z'); // Use Z for UTC to avoid timezone issues
+                                               if (isNaN(date.getTime())) return ''; // Invalid date
+                                               const dayOfMonth = date.getUTCDate();
+                                               const numPoints = chartData.length; // Get actual number of points
 
-                                            if (chartRange === '1m') {
-                                                // Show first, last, and roughly weekly ticks for 1m
-                                                const weekInterval = Math.max(1, Math.floor(numPoints / 4)); // Approx 4 weeks
-                                                return index === 0 || index === numPoints - 1 || index % weekInterval === 0
-                                                    ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-                                                    : '';
-                                            } else if (chartRange === '6m') {
-                                                // Show first, last, and approx monthly ticks for 6m
-                                                const monthInterval = Math.max(1, Math.floor(numPoints / 6)); // Approx 6 months
-                                                return index === 0 || index === numPoints - 1 || index % monthInterval === 0
-                                                    ? date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
-                                                    : '';
-                                            } else if (chartRange === '1y') {
-                                                 // Show first, last, and approx quarterly ticks for 1y
-                                                const quarterInterval = Math.max(1, Math.floor(numPoints / 4)); // Approx 4 quarters
-                                                return index === 0 || index === numPoints - 1 || index % quarterInterval === 0
-                                                     ? date.toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' })
-                                                     : '';
-                                            } else {
-                                                return ''; // Default case
-                                            }
-                                        } catch (e) { return ''; } // Catch potential date parsing errors
-                                     }}
-                                     interval="preserveStartEnd" // Ensure start and end labels are shown if generated
-                                     minTickGap={chartRange === '1m' ? 5 : 15} // Adjust gap based on density
-                                 />
-                                 <YAxis
-                                    tickLine={false}
-                                    axisLine={false}
-                                    tickMargin={5}
-                                    domain={['dataMin - (dataMax-dataMin)*0.05', 'dataMax + (dataMax-dataMin)*0.05']}
-                                    tickFormatter={(value) => `$${value.toFixed(0)}`}
-                                    width={45} // Increased width slightly for better spacing
-                                  />
-                                 <ChartTooltip
-                                    cursor={true} // Enable cursor for better interaction
-                                    content={
-                                        <ChartTooltipContent
-                                            labelFormatter={(label) => {
-                                                 try {
-                                                     return new Date(label + 'T00:00:00Z').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
-                                                 } catch { return label; }
-                                            }}
-                                            formatter={(value) => formatCurrency(value as number)}
-                                            indicator="dot" // Changed indicator style
-                                            labelClassName="text-sm font-semibold"
-                                            nameKey="name"
-                                        />
-                                    }
-                                 />
-                                 <defs>
-                                   <linearGradient id="fillValue" x1="0" y1="0" x2="0" y2="1">
-                                     <stop offset="5%" stopColor="var(--color-value)" stopOpacity={0.8}/>
-                                     <stop offset="95%" stopColor="var(--color-value)" stopOpacity={0.1}/>
-                                   </linearGradient>
-                                 </defs>
-                                 <Area
-                                    dataKey="value"
-                                    type="monotone" // Changed type for smoother curve
-                                    fill="url(#fillValue)"
-                                    stroke="var(--color-value)"
-                                    strokeWidth={2}
-                                    name={chartTicker || "Value"}
-                                    dot={false} // Hide dots for cleaner look
-                                    activeDot={{ r: 4, strokeWidth: 1, fill: 'hsl(var(--background))', stroke: 'var(--color-value)' }} // Style active dot on hover
-                                 />
-                             </AreaChart>
-                         </ChartContainer>
-                          {chartTicker && (
-                              <div className="absolute top-1 right-2 text-xs text-muted-foreground p-1 bg-background/70 rounded">
-                                 Charting: {chartTicker} ({chartRange.toUpperCase()})
-                              </div>
-                          )}
-                     </>
-                 )}
+                                               if (chartRange === '1m') {
+                                                   // Show first, last, and roughly weekly ticks for 1m
+                                                   const weekInterval = Math.max(1, Math.floor(numPoints / 4)); // Approx 4 weeks
+                                                   return index === 0 || index === numPoints - 1 || index % weekInterval === 0
+                                                       ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+                                                       : '';
+                                               } else if (chartRange === '6m') {
+                                                   // Show first, last, and approx monthly ticks for 6m
+                                                   const monthInterval = Math.max(1, Math.floor(numPoints / 6)); // Approx 6 months
+                                                   return index === 0 || index === numPoints - 1 || index % monthInterval === 0
+                                                       ? date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
+                                                       : '';
+                                               } else if (chartRange === '1y') {
+                                                    // Show first, last, and approx quarterly ticks for 1y
+                                                   const quarterInterval = Math.max(1, Math.floor(numPoints / 4)); // Approx 4 quarters
+                                                   return index === 0 || index === numPoints - 1 || index % quarterInterval === 0
+                                                        ? date.toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' })
+                                                        : '';
+                                               } else {
+                                                   return ''; // Default case
+                                               }
+                                           } catch (e) { return ''; } // Catch potential date parsing errors
+                                        }}
+                                        interval="preserveStartEnd" // Ensure start and end labels are shown if generated
+                                        minTickGap={chartRange === '1m' ? 5 : 15} // Adjust gap based on density
+                                    />
+                                    <YAxis
+                                       tickLine={false}
+                                       axisLine={false}
+                                       tickMargin={5}
+                                       domain={['dataMin - (dataMax-dataMin)*0.05', 'dataMax + (dataMax-dataMin)*0.05']}
+                                       tickFormatter={(value) => `$${value.toFixed(0)}`}
+                                       width={45} // Increased width slightly for better spacing
+                                     />
+                                    <ChartTooltip
+                                       cursor={true} // Enable cursor for better interaction
+                                       content={
+                                           <ChartTooltipContent
+                                               labelFormatter={(label) => {
+                                                    try {
+                                                        return new Date(label + 'T00:00:00Z').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
+                                                    } catch { return label; }
+                                               }}
+                                               formatter={(value) => formatCurrency(value as number)}
+                                               indicator="dot" // Changed indicator style
+                                               labelClassName="text-sm font-semibold"
+                                               nameKey="name"
+                                           />
+                                       }
+                                    />
+                                    <defs>
+                                      <linearGradient id="fillValue" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="var(--color-value)" stopOpacity={0.8}/>
+                                        <stop offset="95%" stopColor="var(--color-value)" stopOpacity={0.1}/>
+                                      </linearGradient>
+                                    </defs>
+                                    <Area
+                                       dataKey="value"
+                                       type="monotone" // Changed type for smoother curve
+                                       fill="url(#fillValue)"
+                                       stroke="var(--color-value)"
+                                       strokeWidth={2}
+                                       name={chartTicker || "Value"}
+                                       dot={false} // Hide dots for cleaner look
+                                       activeDot={{ r: 4, strokeWidth: 1, fill: 'hsl(var(--background))', stroke: 'var(--color-value)' }} // Style active dot on hover
+                                    />
+                                </AreaChart>
+                            </ChartContainer>
+                             {chartTicker && (
+                                 <div className="absolute top-1 right-2 text-xs text-muted-foreground p-1 bg-background/70 rounded">
+                                    Charting: {chartTicker} ({chartRange.toUpperCase()})
+                                 </div>
+                             )}
+                        </>
+                    )}
+                </div>
              </div>
 
 
@@ -448,10 +454,17 @@ export default function PortfolioOverview() {
                                 const costBasis = pos.quantity * pos.averagePrice;
                                 const gainLoss = hasValidPrice ? totalValue! - costBasis : undefined;
                                 const gainLossPercent = (hasValidPrice && costBasis > 0) ? (gainLoss! / costBasis) * 100 : 0;
+                                const isSelected = pos.ticker === chartTicker;
 
                                 return (
-                                    <TableRow key={pos.ticker} className="hover:bg-muted/30">
-                                        <TableCell className="font-medium">{pos.ticker}</TableCell>
+                                    <TableRow
+                                        key={pos.ticker}
+                                        className={`cursor-pointer hover:bg-muted/50 ${isSelected ? 'bg-primary/10 hover:bg-primary/15' : ''}`}
+                                        onClick={() => setChartTicker(pos.ticker)} // Set ticker on click
+                                        tabIndex={0} // Make it focusable
+                                        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setChartTicker(pos.ticker)} // Allow keyboard selection
+                                    >
+                                        <TableCell className={`font-medium ${isSelected ? 'text-primary' : ''}`}>{pos.ticker}</TableCell>
                                         <TableCell className="text-right">{pos.quantity.toLocaleString()}</TableCell>
                                         <TableCell className="text-right">{formatCurrency(pos.averagePrice)}</TableCell>
                                         <TableCell className="text-right">
