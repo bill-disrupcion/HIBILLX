@@ -1,5 +1,5 @@
 
-'use client'; // Explicitly mark as client component
+'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -12,192 +12,191 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getMarketData, getTopMovers, type Instrument, type MarketData } from '@/services/broker-api'; // APIs are now real placeholders
-import { TrendingUp, TrendingDown, AlertTriangle, Minus, Newspaper } from 'lucide-react';
+import { getMarketData, getGovBondYields, type Instrument, type MarketData, type GovBondYield } from '@/services/broker-api'; // Fetch bond yields
+import { TrendingUp, TrendingDown, AlertTriangle, Minus, BarChartBig, Info } from 'lucide-react'; // Use relevant icons
 import { useToast } from '@/hooks/use-toast';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-interface IndexData extends MarketData {
-  name: string;
-}
-
-interface MoversData {
-  gainers: Instrument[];
-  losers: Instrument[];
-}
+// Relevant indices for government context (examples)
+const relevantIndices = [
+    { ticker: '^FVX', name: '5-Year Treasury Yield' }, // CBOE Interest Rate 5-Year T-Note
+    { ticker: '^TNX', name: '10-Year Treasury Yield' }, // CBOE Interest Rate 10-Year T-Note
+    { ticker: '^TYX', name: '30-Year Treasury Yield' }, // CBOE Interest Rate 30-Year T-Bond
+    // Add other relevant indices like LIBOR, SOFR proxies if needed, or major bond ETFs
+    { ticker: 'AGG', name: 'US Aggregate Bond ETF' },
+];
 
 export default function MarketOverview() {
   const { toast } = useToast();
-  const [indices, setIndices] = useState<IndexData[] | null>(null);
-  const [movers, setMovers] = useState<MoversData | null>(null);
+  const [indicesData, setIndicesData] = useState<MarketData[] | null>(null);
+  const [bondYields, setBondYields] = useState<GovBondYield[] | null>(null);
   const [loadingIndices, setLoadingIndices] = useState(true);
-  const [loadingMovers, setLoadingMovers] = useState(true);
+  const [loadingYields, setLoadingYields] = useState(true);
   const [errorIndices, setErrorIndices] = useState<string | null>(null);
-  const [errorMovers, setErrorMovers] = useState<string | null>(null);
+  const [errorYields, setErrorYields] = useState<string | null>(null);
 
-  const indexTickers = ['SPY', 'QQQ', 'DIA']; // S&P 500, Nasdaq 100, Dow Jones
-
-  const formatCurrency = useCallback((value: number | undefined) => {
-    if (value === undefined || isNaN(value)) return '--.--';
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+  const formatPercent = useCallback((value: number | undefined, decimals: number = 2) => {
+    if (value === undefined || isNaN(value)) return '--.--%';
+    return `${value.toFixed(decimals)}%`;
   }, []);
 
-   const formatPercent = useCallback((value: number | undefined) => {
-    if (value === undefined || isNaN(value)) return '--.--%';
-    return `${value.toFixed(2)}%`;
+  const formatBasisPoints = useCallback((value: number | undefined) => {
+     if (value === undefined || isNaN(value)) return '-- bps';
+     const bps = value * 100; // Assuming change is in percentage points, convert to bps
+     return `${bps >= 0 ? '+' : ''}${bps.toFixed(1)} bps`;
   }, []);
 
   const getChangeColor = (value: number | undefined) => {
     if (value === undefined || isNaN(value)) return 'text-muted-foreground';
-    if (value > 0) return 'text-green-600 dark:text-green-500';
-    if (value < 0) return 'text-red-600 dark:text-red-500';
+    if (value > 0.0001) return 'text-red-600 dark:text-red-500'; // Higher yield = red (often)
+    if (value < -0.0001) return 'text-green-600 dark:text-green-500'; // Lower yield = green (often)
     return 'text-muted-foreground';
   };
 
   const getChangeIcon = (value: number | undefined) => {
      if (value === undefined || isNaN(value)) return <Minus className="h-4 w-4 text-muted-foreground" />;
-     if (value > 0) return <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-500" />;
-     if (value < 0) return <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-500" />;
+     if (value > 0.0001) return <TrendingUp className="h-4 w-4 text-red-600 dark:text-red-500" />; // Higher yield
+     if (value < -0.0001) return <TrendingDown className="h-4 w-4 text-green-600 dark:text-green-500" />; // Lower yield
      return <Minus className="h-4 w-4 text-muted-foreground" />;
    };
 
-
-  // Fetch Index Data - Attempts real API calls via getMarketData
+  // Fetch Index Data (Treasury Yields via Market Data)
   useEffect(() => {
     const fetchIndices = async () => {
       setLoadingIndices(true);
       setErrorIndices(null);
       try {
-        const indexDataPromises = indexTickers.map(async (ticker) => {
-          // getMarketData will throw if not implemented/configured
-          const data = await getMarketData(ticker);
-          const nameMap: Record<string, string> = { 'SPY': 'S&P 500 ETF', 'QQQ': 'Nasdaq 100 ETF', 'DIA': 'Dow Jones ETF' };
-          return { ...data, name: nameMap[ticker] || ticker };
+        const indexDataPromises = relevantIndices.map(async (index) => {
+          const data = await getMarketData(index.ticker);
+          return { ...data, name: index.name }; // Add name back
         });
-
-        // Use Promise.allSettled to handle potential individual failures
         const results = await Promise.allSettled(indexDataPromises);
-
-        const fetchedIndices: IndexData[] = [];
+        const fetchedIndices: MarketData[] = [];
         const errors: string[] = [];
-        results.forEach((result, index) => {
-            if (result.status === 'fulfilled') {
+        results.forEach((result, i) => {
+            if (result.status === 'fulfilled' && result.value) {
                 fetchedIndices.push(result.value);
             } else {
-                console.error(`Failed to fetch index data for ${indexTickers[index]}:`, result.reason);
-                errors.push(`Failed for ${indexTickers[index]}: ${result.reason?.message || 'Unknown error'}`);
+                console.error(`Failed to fetch index data for ${relevantIndices[i].ticker}:`, result.status === 'rejected' ? result.reason : 'No data');
+                errors.push(`${relevantIndices[i].ticker}: ${result.status === 'rejected' ? (result.reason?.message || 'Error') : 'No data'}`);
             }
         });
-
-        setIndices(fetchedIndices);
-
+        setIndicesData(fetchedIndices);
         if (errors.length > 0) {
-             // Show first error, or a generic message if all failed
-             const errorMsg = fetchedIndices.length > 0
-                 ? `Could not load data for some indices (${errors.length} failed). ${errors[0]}`
-                 : `Failed to load all index data. ${errors[0]}`;
+             const errorMsg = `Could not load data for some indices (${errors.length} failed). ${errors[0]}`;
              setErrorIndices(errorMsg);
+             if (fetchedIndices.length === 0) setIndicesData([]); // Ensure it's an empty array if all failed
         }
-
-      } catch (err: any) { // Catch errors from Promise.allSettled or initial setup
+      } catch (err: any) {
         console.error("General error fetching index data:", err);
-        setErrorIndices(err.message || 'An unexpected error occurred while loading index data.');
-        setIndices(null);
+        setErrorIndices(err.message || 'An unexpected error occurred loading index data.');
+        setIndicesData([]); // Set empty array on general error
       } finally {
         setLoadingIndices(false);
       }
     };
     fetchIndices();
-  }, []); // Runs once on mount
+  }, []);
 
-  // Fetch Movers Data - Attempts real API calls via getTopMovers
+  // Fetch Government Bond Yields
   useEffect(() => {
-    const fetchMovers = async () => {
-      setLoadingMovers(true);
-      setErrorMovers(null);
+    const fetchYields = async () => {
+      setLoadingYields(true);
+      setErrorYields(null);
       try {
-        // getTopMovers will throw if not implemented/configured
-        const fetchedMovers = await getTopMovers(5);
-        setMovers(fetchedMovers);
+        const fetchedYields = await getGovBondYields(); // Assuming this fetches a standard set (e.g., US Treasuries)
+        setBondYields(fetchedYields);
       } catch (err: any) {
-        console.error("Failed to fetch market movers:", err);
-        setErrorMovers(`Failed to load market movers: ${err.message || 'Check API implementation.'}`);
-        setMovers(null);
+        console.error("Failed to fetch government bond yields:", err);
+        setErrorYields(`Failed to load bond yields: ${err.message || 'Check API implementation.'}`);
+        setBondYields([]); // Set empty array on error
       } finally {
-        setLoadingMovers(false);
+        setLoadingYields(false);
       }
     };
-    fetchMovers();
-  }, []); // Runs once on mount
+    fetchYields();
+  }, []);
 
   const handleItemClick = useCallback((ticker: string, name: string) => {
     console.log(`Clicked on ${name} (${ticker})`);
     toast({
-        title: `Viewing ${name} (${ticker})`,
+        title: `Viewing ${name}`,
         description: "Detailed view/chart functionality requires implementation.",
     });
-    // Example: router.push(`/market/${ticker}`);
   }, [toast]);
 
-
-  const renderIndexCard = (index: IndexData) => (
+  const renderIndexCard = (index: MarketData & { name: string }) => (
      <div
          key={index.ticker}
-         className="flex flex-col p-3 border rounded-md bg-card shadow-sm hover:shadow-lg hover:border-primary/50 transition-all duration-150 cursor-pointer"
+         className="flex flex-col p-3 border rounded-md bg-card shadow-sm hover:shadow-md hover:border-primary/50 transition-all duration-150 cursor-pointer"
          onClick={() => handleItemClick(index.ticker, index.name)}
          tabIndex={0}
          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleItemClick(index.ticker, index.name)}
          role="button"
-         aria-label={`View details for ${index.name} (${index.ticker})`}
+         aria-label={`View details for ${index.name}`}
      >
          <span className="text-xs font-medium text-muted-foreground">{index.name} ({index.ticker})</span>
-         <span className="text-lg font-semibold mt-1">{formatCurrency(index.price)}</span>
-         <div className={`flex items-center text-sm mt-0.5 ${getChangeColor(index.changePercent)}`}>
-              {getChangeIcon(index.changePercent)}
-              <span className="ml-1 font-medium">{formatPercent(index.changePercent)}</span>
-              <span className="ml-1 text-xs">({formatCurrency(index.changeValue)})</span>
+          {/* For yields, display as percentage */}
+         <span className="text-lg font-semibold mt-1">{formatPercent(index.price)}</span>
+         <div className={`flex items-center text-sm mt-0.5 ${getChangeColor(index.changeValue)}`}>
+              {getChangeIcon(index.changeValue)}
+               {/* Display change in basis points */}
+              <span className="ml-1 font-medium">{formatBasisPoints(index.changeValue)}</span>
+              <TooltipProvider>
+                 <Tooltip>
+                    <TooltipTrigger asChild>
+                         <Info className="h-3 w-3 text-muted-foreground ml-1.5 cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                       <p>Change: {index.changeValue?.toFixed(4)}%</p>
+                       <p>% Change: {formatPercent(index.changePercent)}</p>
+                       <p>Prev Close: {formatPercent(index.previousClose)}</p>
+                    </TooltipContent>
+                 </Tooltip>
+              </TooltipProvider>
          </div>
      </div>
   );
 
-  const renderMoversTable = (data: Instrument[] | undefined, title: string) => (
+   const renderYieldCurveTable = (data: GovBondYield[] | undefined | null) => (
       <div>
-          <h4 className="text-md font-semibold mb-2">{title}</h4>
-           {loadingMovers ? (
+          <h4 className="text-md font-semibold mb-2">Treasury Yield Curve</h4>
+           {loadingYields ? (
                 <div className="space-y-2">
-                    {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+                    {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
                 </div>
-           ) : errorMovers && title === 'Top Gainers' ? ( // Show error only once
+           ) : errorYields ? (
                <Alert variant="destructive" className="mt-2">
                   <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>Movers Error</AlertTitle>
-                  <AlertDescription>{errorMovers}</AlertDescription>
+                  <AlertTitle>Yield Curve Error</AlertTitle>
+                  <AlertDescription>{errorYields}</AlertDescription>
                </Alert>
            ) : !data || data.length === 0 ? (
-                <p className="text-sm text-muted-foreground italic">No {title.toLowerCase()} data available{errorMovers ? ' (API error)' : '.'}</p>
+                <p className="text-sm text-muted-foreground italic">Yield curve data unavailable.</p>
            ) : (
               <Table className="text-xs">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="p-1.5">Ticker</TableHead>
-                      <TableHead className="text-right p-1.5">Price</TableHead>
-                      <TableHead className="text-right p-1.5">Change</TableHead>
+                      <TableHead className="p-1.5">Maturity</TableHead>
+                      <TableHead className="text-right p-1.5">Yield</TableHead>
+                      <TableHead className="text-right p-1.5">Change (bps)</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                      {data.map((mover) => (
+                      {data.map((yieldData) => (
                           <TableRow
-                              key={mover.ticker}
+                              key={yieldData.maturity}
                               className="cursor-pointer hover:bg-muted/50"
-                              onClick={() => handleItemClick(mover.ticker, mover.name)}
+                              onClick={() => handleItemClick(yieldData.maturity, `${yieldData.maturity} Treasury`)}
                               tabIndex={0}
-                              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleItemClick(mover.ticker, mover.name)}
+                              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleItemClick(yieldData.maturity, `${yieldData.maturity} Treasury`)}
                               role="button"
-                              aria-label={`View details for ${mover.name} (${mover.ticker})`}
+                              aria-label={`View details for ${yieldData.maturity} Treasury`}
                           >
-                              <TableCell className="font-medium p-1.5">{mover.ticker}</TableCell>
-                              <TableCell className="text-right p-1.5">{formatCurrency(mover.price)}</TableCell>
-                              <TableCell className={`text-right p-1.5 font-medium ${getChangeColor(mover.changePercent)}`}>
-                                  {formatPercent(mover.changePercent)}
+                              <TableCell className="font-medium p-1.5">{yieldData.maturity}</TableCell>
+                              <TableCell className="text-right p-1.5 font-semibold">{formatPercent(yieldData.yield)}</TableCell>
+                              <TableCell className={`text-right p-1.5 font-medium ${getChangeColor(yieldData.change)}`}>
+                                  {formatBasisPoints(yieldData.change)}
                               </TableCell>
                           </TableRow>
                       ))}
@@ -207,26 +206,25 @@ export default function MarketOverview() {
       </div>
   );
 
-
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center">
-           <Newspaper className="mr-2 h-5 w-5 text-primary" /> Market Overview
+           <BarChartBig className="mr-2 h-5 w-5 text-primary" /> Market & Yield Overview
         </CardTitle>
-        <CardDescription>Live market trends and top movers. Requires API setup.</CardDescription>
+        <CardDescription>Key treasury yields and relevant market indices. Requires API setup.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Major Indices */}
+        {/* Major Indices/Yields */}
         <div>
-           <h3 className="text-lg font-semibold mb-3">Major Indices</h3>
+           <h3 className="text-lg font-semibold mb-3">Key Rates & Indices</h3>
             {loadingIndices ? (
-                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {[...Array(3)].map((_, i) => (
+                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {[...Array(4)].map((_, i) => (
                          <div key={i} className="flex flex-col p-3 border rounded-md bg-muted/30 space-y-1.5">
                             <Skeleton className="h-3.5 w-20" />
-                            <Skeleton className="h-5 w-24" />
-                            <Skeleton className="h-4 w-28" />
+                            <Skeleton className="h-5 w-16" />
+                            <Skeleton className="h-4 w-20" />
                         </div>
                     ))}
                  </div>
@@ -236,20 +234,21 @@ export default function MarketOverview() {
                     <AlertTitle>Indices Error</AlertTitle>
                     <AlertDescription>{errorIndices}</AlertDescription>
                  </Alert>
-            ) : indices && indices.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                   {indices.map(renderIndexCard)}
+            ) : indicesData && indicesData.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                   {indicesData.map((idx) => renderIndexCard(idx as MarketData & { name: string }))}
                 </div>
-            ) : !errorIndices ? ( // Only show this if there wasn't an error but no data
+            ) : (
                 <p className="text-sm text-muted-foreground italic">Index data unavailable.</p>
-            ) : null /* Error is already displayed */}
+            )}
         </div>
 
-        {/* Top Movers */}
-         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t">
-             {renderMoversTable(movers?.gainers, 'Top Gainers')}
-             {renderMoversTable(movers?.losers, 'Top Losers')}
+        {/* Yield Curve Table */}
+         <div className="pt-4 border-t">
+             {renderYieldCurveTable(bondYields)}
          </div>
+
+         {/* Removed Top Movers Section */}
 
       </CardContent>
     </Card>

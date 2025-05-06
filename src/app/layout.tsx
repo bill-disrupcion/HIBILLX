@@ -1,3 +1,4 @@
+
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
@@ -15,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'HIBLLX - AI Finance Pilot',
-  description: 'AI-powered investment diversification and trading strategies.',
+  title: 'HIBLLX - Governmental AI Trading Pilot',
+  description: 'AI-powered analysis and trading strategies for governmental financial instruments.',
 };
 
 export default function RootLayout({

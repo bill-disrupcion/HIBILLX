@@ -1,3 +1,4 @@
+
 // @ts-nocheck
 'use client';
 
@@ -10,9 +11,9 @@ import {
   SidebarMenuItem,
   SidebarTrigger,
 } from '@/components/ui/sidebar';
-import { Bot, Home, LineChart, Users } from 'lucide-react'; // Removed BookOpen
+import { Bot, Home, LineChart, Users, Landmark } from 'lucide-react'; // Added Landmark for Treasury/Gov icon
 import React, { useEffect } from 'react';
-import { usePathname, useRouter } from 'next/navigation'; // Import Next.js navigation hooks
+import { usePathname, useRouter } from 'next/navigation';
 
 // Simple inline SVG for HIBLLX logo (replace with actual logo if available)
 const HibllxLogo = () => (
@@ -36,18 +37,16 @@ export default function AppSidebar() {
       setActiveItem('bill-x');
     } else if (pathname === '/performance') {
        setActiveItem('performance');
-    } else if (pathname === '/referrals') { // Removed repository path check
+    } else if (pathname === '/referrals') { // Kept for potential future use, but adjust relevance
          setActiveItem('referrals');
     } else {
-      // Optional: handle other paths or set a default
-      setActiveItem(''); // Or keep the last known active item
+      setActiveItem('');
     }
   }, [pathname]);
 
 
   const handleItemClick = (item: string, path: string) => {
-    // setActiveItem(item); // No longer needed, useEffect handles this
-    router.push(path); // Navigate using Next.js router
+    router.push(path);
     console.log(`Navigate to ${item} at ${path}`);
   };
 
@@ -56,12 +55,8 @@ export default function AppSidebar() {
       <SidebarHeader className="flex items-center justify-between p-2">
          <div className="flex items-center gap-2">
           <HibllxLogo />
-          <span className="font-semibold text-lg group-data-[collapsible=icon]:hidden">HIBLLX</span>
+          <span className="font-semibold text-lg group-data-[collapsible=icon]:hidden">HIBLLX GovAI</span>
          </div>
-        {/* SidebarTrigger is usually outside the Sidebar content in the main layout,
-            but placing it here conditionally for mobile might be an option too.
-            The current setup assumes the trigger is in the header of the main content area.
-            Let's keep this clean for now. */}
       </SidebarHeader>
       <SidebarContent>
         <SidebarMenu>
@@ -69,7 +64,7 @@ export default function AppSidebar() {
             <SidebarMenuButton
               onClick={() => handleItemClick('dashboard', '/')}
               isActive={activeItem === 'dashboard'}
-              tooltip="Dashboard"
+              tooltip="Trading Dashboard"
             >
               <Home />
               <span>Dashboard</span>
@@ -79,33 +74,32 @@ export default function AppSidebar() {
             <SidebarMenuButton
               onClick={() => handleItemClick('bill-x', '/bill-x')}
               isActive={activeItem === 'bill-x'}
-              tooltip="Bill X AI"
+              tooltip="Bill X AI Agent"
             >
               <Bot />
               <span>Bill X</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
-           {/* Removed Repository SidebarMenuItem */}
           <SidebarMenuItem>
             <SidebarMenuButton
                onClick={() => handleItemClick('performance', '/performance')}
               isActive={activeItem === 'performance'}
-              tooltip="Performance"
-              // Removed disabled prop
+              tooltip="AI Performance Monitor"
             >
               <LineChart />
               <span>Performance</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          {/* Example: Replace Referrals with something more relevant like Treasury/Compliance */}
            <SidebarMenuItem>
              <SidebarMenuButton
-               onClick={() => handleItemClick('referrals', '/referrals')} // Assuming a /referrals route
-              isActive={activeItem === 'referrals'}
-              tooltip="Referrals"
+               onClick={() => handleItemClick('treasury', '/treasury')} // Example route
+              isActive={activeItem === 'treasury'}
+              tooltip="Treasury Operations"
                disabled // Disable temporarily if page not ready
             >
-              <Users />
-              <span>Referrals</span>
+              <Landmark />
+              <span>Treasury</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
