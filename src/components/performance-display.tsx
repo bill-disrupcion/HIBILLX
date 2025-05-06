@@ -1,7 +1,6 @@
-// @ts-nocheck
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react'; // Import useRef
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Card,
   CardContent,
@@ -11,29 +10,48 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Bot, Activity, Clock, Zap, TrendingUp, DollarSign, TrendingDown } from 'lucide-react';
+import { Bot, Activity, Clock, Zap, TrendingUp, DollarSign, TrendingDown, AlertTriangle } from 'lucide-react'; // Added AlertTriangle
 import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Added Alert
+
 
 interface AgentAction {
   id: number;
   timestamp: Date;
-  type: 'BUY' | 'SELL' | 'REBALANCE' | 'INFO';
+  type: 'BUY' | 'SELL' | 'REBALANCE' | 'INFO' | 'ERROR'; // Added ERROR type
   details: string;
   amount?: number;
   ticker?: string;
 }
 
-// Mock data - In a real app, this would come from user settings or backend
+// Mock function to fetch agent status - Replace with actual API call
+const fetchAgentStatus = async (): Promise<typeof mockAgentStatus> => {
+    console.log("API Call: fetchAgentStatus");
+    await new Promise(resolve => setTimeout(resolve, 450)); // Simulate delay
+    if (Math.random() < 0.05) { // Simulate occasional fetch error
+        throw new Error("Simulated API Error: Failed to fetch agent status.");
+    }
+    // Return mock data for now
+     return {
+        isEnabled: true,
+        mode: Math.random() > 0.5 ? 'strategy' : 'full',
+        allocatedAmount: Math.random() > 0.5 ? 500 : 1500,
+        strategy: Math.random() > 0.5 ? 'Balanced Approach' : 'Aggressive Tech Focus',
+    };
+};
+
+
+// Mock data - Default/initial state
 const mockAgentStatus = {
-  isEnabled: true,
-  mode: 'strategy', // or 'full'
-  allocatedAmount: 500, // Example amount
-  strategy: 'Balanced Approach', // Example strategy if mode is 'strategy'
+  isEnabled: false,
+  mode: 'strategy',
+  allocatedAmount: 0,
+  strategy: undefined,
 };
 
 // Mock function to generate random agent actions - modified to use a counter ref
 const generateMockAction = (idCounterRef: React.MutableRefObject<number>): AgentAction => {
-  const types: AgentAction['type'][] = ['BUY', 'SELL', 'REBALANCE', 'INFO'];
+  const types: AgentAction['type'][] = ['BUY', 'SELL', 'REBALANCE', 'INFO', 'ERROR']; // Added ERROR
   const tickers = ['AAPL', 'MSFT', 'VOO', 'TSLA', 'AGG', 'XOM', 'GOOGL', 'NVDA'];
   const type = types[Math.floor(Math.random() * types.length)];
   const ticker = tickers[Math.floor(Math.random() * tickers.length)];
@@ -53,16 +71,25 @@ const generateMockAction = (idCounterRef: React.MutableRefObject<number>): Agent
       amount = quantity * parseFloat(price);
       break;
     case 'REBALANCE':
-      details = `Rebalanced portfolio according to '${mockAgentStatus.strategy || 'dynamic'}' strategy.`;
+      details = `Rebalanced portfolio according to '${mockAgentStatus.strategy || 'dynamic'}' strategy. Adjusted 5 positions.`;
       break;
     case 'INFO':
        const infoMessages = [
-            `Monitoring market volatility for ${ticker}.`,
-            `Adjusting target allocation for ${mockAgentStatus.strategy || 'portfolio'}.`,
-            `Analyzed recent news impact on ${ticker}.`,
-            `Performance check: Portfolio up 0.5% today.`
+            `Monitoring market volatility for ${ticker}. Price: $${price}`,
+            `Adjusting target allocation for ${mockAgentStatus.strategy || 'dynamic portfolio'}.`,
+            `Analyzed recent news impact on ${ticker}. Sentiment: Neutral.`,
+            `Performance check: Portfolio value change +0.3% in last hour.`
        ];
       details = infoMessages[Math.floor(Math.random() * infoMessages.length)];
+      break;
+     case 'ERROR':
+       const errorMessages = [
+            `Failed to execute trade for ${ticker}: Insufficient funds.`,
+            `API connection error during market data fetch for ${ticker}. Retrying...`,
+            `Unexpected volatility detected for ${ticker}. Pausing automated actions for this asset.`,
+            `Order for ${quantity} ${ticker} partially filled. Monitoring completion.`
+       ];
+      details = `Agent Error: ${errorMessages[Math.floor(Math.random() * errorMessages.length)]}`;
       break;
   }
 
@@ -74,43 +101,69 @@ const generateMockAction = (idCounterRef: React.MutableRefObject<number>): Agent
     type,
     details,
     amount: amount ? parseFloat(amount.toFixed(2)) : undefined,
-    ticker: ['BUY', 'SELL'].includes(type) ? ticker : undefined,
+    ticker: ['BUY', 'SELL', 'INFO', 'ERROR'].includes(type) ? ticker : undefined, // Added ticker to INFO/ERROR
   };
 };
 
 
 export default function PerformanceDisplay() {
-  const [agentStatus, setAgentStatus] = useState(mockAgentStatus); // Use mock status for now
+  const [agentStatus, setAgentStatus] = useState<typeof mockAgentStatus | null>(null); // Start as null
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [actions, setActions] = useState<AgentAction[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingStatus, setLoadingStatus] = useState(true);
+  const [loadingActions, setLoadingActions] = useState(true); // Separate loading for actions
   const actionIdCounter = useRef<number>(0); // Ref to store the last used ID
 
+  // Fetch agent status on mount
   useEffect(() => {
-    // Simulate initial loading of actions
+    const getStatus = async () => {
+        setLoadingStatus(true);
+        setStatusError(null);
+        try {
+            const status = await fetchAgentStatus();
+            setAgentStatus(status);
+        } catch (err: any) {
+            console.error("Failed to fetch agent status:", err);
+            setStatusError(`Failed to load agent status: ${err.message || 'Please try again.'}`);
+            setAgentStatus(null); // Ensure status is null on error
+        } finally {
+            setLoadingStatus(false);
+        }
+    };
+    getStatus();
+  }, []);
+
+  // Load initial actions and set up interval for updates
+  useEffect(() => {
+    // Simulate initial loading of actions (replace with API call if actions are persisted)
+    setLoadingActions(true);
     const initialActions: AgentAction[] = [];
-    for (let i = 0; i < 5; i++) {
-        // Generate slightly older timestamps for initial load
-        const action = generateMockAction(actionIdCounter); // Pass the ref
-        action.timestamp = new Date(Date.now() - (5 - i) * 60000 * Math.random()); // Within last 5 mins
+     // Generate initial actions using the counter ref
+    for (let i = 0; i < 5 + Math.floor(Math.random() * 5); i++) { // 5-9 initial actions
+        const action = generateMockAction(actionIdCounter);
+        // Make timestamps slightly older and varied
+        action.timestamp = new Date(Date.now() - (Math.random() * 10 * 60 * 1000 + 10000)); // 10sec to 10min ago
         initialActions.push(action);
     }
-    setActions(initialActions.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())); // Sort descending by time
-    setLoading(false);
+     // Sort by timestamp descending before setting state
+    setActions(initialActions.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()));
+    setLoadingActions(false); // Mark initial actions as loaded
 
-    // Simulate real-time updates
+    // Simulate real-time updates - Start interval *after* initial load
     const intervalId = setInterval(() => {
       setActions((prevActions) => {
-        const newAction = generateMockAction(actionIdCounter); // Pass the ref
+        const newAction = generateMockAction(actionIdCounter);
         // Keep max 50 actions for performance
         return [newAction, ...prevActions].slice(0, 50);
       });
-    }, 8000); // Add a new action every 8 seconds
+    }, 8000 + Math.random() * 4000); // Add a new action every 8-12 seconds
 
     return () => clearInterval(intervalId); // Cleanup interval on unmount
   }, []); // Empty dependency array ensures this runs only once on mount
 
 
-  const getStatusBadgeVariant = (status: boolean) => {
+  const getStatusBadgeVariant = (status: boolean | undefined) => {
+     if (status === undefined) return 'secondary'; // Loading or error state
     return status ? 'default' : 'destructive';
   };
 
@@ -120,6 +173,7 @@ export default function PerformanceDisplay() {
             case 'SELL': return <TrendingDown className="h-4 w-4 text-red-500" />;
             case 'REBALANCE': return <Zap className="h-4 w-4 text-blue-500" />;
             case 'INFO': return <Activity className="h-4 w-4 text-gray-500" />;
+             case 'ERROR': return <AlertTriangle className="h-4 w-4 text-yellow-500" />; // Icon for errors
             default: return <Bot className="h-4 w-4" />;
         }
    }
@@ -139,43 +193,60 @@ export default function PerformanceDisplay() {
           <CardTitle className="flex items-center">
              <Bot className="mr-2 text-primary" /> Bill X Agent Status
           </CardTitle>
-          <CardDescription>Current configuration and operational status of the AI agent.</CardDescription>
+           {loadingStatus ? (
+                <Skeleton className="h-4 w-3/4 mt-1" />
+           ) : statusError ? (
+                <CardDescription className="text-destructive">Could not load agent status.</CardDescription>
+           ) : (
+                <CardDescription>Current configuration and operational status.</CardDescription>
+           )}
         </CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-           <div className="flex items-center space-x-2">
-                <span className="font-medium text-muted-foreground">Status:</span>
-                {loading ? <Skeleton className="h-6 w-20" /> : (
+           {loadingStatus ? (
+                <>
+                    <Skeleton className="h-6 w-24" />
+                    <Skeleton className="h-6 w-32" />
+                    <Skeleton className="h-6 w-28" />
+                     {/* Add skeleton for strategy if applicable based on a guess or leave out */}
+                </>
+           ) : statusError ? (
+                 <Alert variant="destructive" className="sm:col-span-2 md:col-span-3">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Status Error</AlertTitle>
+                    <AlertDescription>{statusError}</AlertDescription>
+                 </Alert>
+           ) : agentStatus ? (
+             <>
+               <div className="flex items-center space-x-2">
+                    <span className="font-medium text-muted-foreground">Status:</span>
                     <Badge variant={getStatusBadgeVariant(agentStatus.isEnabled)}>
-                    {agentStatus.isEnabled ? 'Active' : 'Inactive'}
+                        {agentStatus.isEnabled ? 'Active' : 'Inactive'}
                     </Badge>
-                )}
-           </div>
-            <div className="flex items-center space-x-2">
-                <span className="font-medium text-muted-foreground">Mode:</span>
-                 {loading ? <Skeleton className="h-6 w-24" /> : (
-                    <span className="font-semibold flex items-center">
+               </div>
+                <div className="flex items-center space-x-2">
+                    <span className="font-medium text-muted-foreground">Mode:</span>
+                    <span className="font-semibold flex items-center capitalize">
                         {agentStatus.mode === 'full' ? <TrendingUp className="w-4 h-4 mr-1.5"/> : <Zap className="w-4 h-4 mr-1.5"/>}
-                        {agentStatus.mode === 'full' ? 'Full Automation' : 'Strategy-Based'}
+                        {agentStatus.mode === 'full' ? 'Full Automation' : agentStatus.mode}
                     </span>
-                 )}
-           </div>
-           <div className="flex items-center space-x-2">
-                <span className="font-medium text-muted-foreground">Allocation:</span>
-                 {loading ? <Skeleton className="h-6 w-20" /> : (
+               </div>
+               <div className="flex items-center space-x-2">
+                    <span className="font-medium text-muted-foreground">Allocation:</span>
                     <span className="font-semibold flex items-center">
                         <DollarSign className="w-4 h-4 mr-1 text-green-600"/>
                          ${agentStatus.allocatedAmount.toLocaleString()}
                          {agentStatus.mode === 'strategy' && <span className="text-xs text-muted-foreground ml-1">(per strategy)</span>}
                     </span>
-                 )}
-           </div>
-            {agentStatus.mode === 'strategy' && agentStatus.strategy && (
-                <div className="flex items-center space-x-2 sm:col-span-2 md:col-span-1">
-                    <span className="font-medium text-muted-foreground">Active Strategy:</span>
-                     {loading ? <Skeleton className="h-6 w-32" /> : (
+               </div>
+                {agentStatus.mode === 'strategy' && agentStatus.strategy && (
+                    <div className="flex items-center space-x-2 sm:col-span-2 md:col-span-3"> {/* Span across columns */}
+                        <span className="font-medium text-muted-foreground">Active Strategy:</span>
                         <span className="font-semibold">{agentStatus.strategy}</span>
-                     )}
-                </div>
+                    </div>
+               )}
+             </>
+           ) : (
+                <p className="text-muted-foreground sm:col-span-2 md:col-span-3">Agent status unavailable.</p>
            )}
         </CardContent>
       </Card>
@@ -187,33 +258,49 @@ export default function PerformanceDisplay() {
           <CardDescription>Real-time feed of actions taken by the Bill X agent.</CardDescription>
         </CardHeader>
         <CardContent>
-           <ScrollArea className="h-[400px] w-full pr-4">
-            {loading ? (
-                 <div className="space-y-4">
-                    {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+           <ScrollArea className="h-[400px] w-full pr-4 border rounded-md"> {/* Added border */}
+            {loadingActions ? (
+                 // Consistent Loading Skeletons for Actions
+                 <div className="space-y-4 p-4">
+                     {[...Array(5)].map((_, i) => (
+                         <div key={i} className="flex items-start space-x-3">
+                            <Skeleton className="h-5 w-5 rounded-full mt-0.5" />
+                            <div className="flex-1 space-y-1.5">
+                                <Skeleton className="h-4 w-3/4" />
+                                <Skeleton className="h-3 w-1/2" />
+                            </div>
+                         </div>
+                     ))}
                  </div>
             ) : actions.length === 0 ? (
-                <p className="text-center text-muted-foreground py-10">No actions recorded yet.</p>
+                <div className="flex items-center justify-center h-full">
+                     <p className="text-center text-muted-foreground py-10">No actions recorded yet.</p>
+                </div>
             ) : (
-                 <ul className="space-y-3">
+                 // Action List
+                 <ul className="space-y-3 p-4">
                     {actions.map((action) => (
-                        <li key={action.id} className="flex items-start space-x-3 border-b pb-3 last:border-b-0">
+                        <li key={action.id} className={`flex items-start space-x-3 border-b pb-3 last:border-b-0 ${action.type === 'ERROR' ? 'bg-yellow-500/10 rounded p-2 -m-2' : ''}`}>
                             <div className="flex-shrink-0 pt-1">
                                 {getActionIcon(action.type)}
                             </div>
-                            <div className="flex-1">
-                                <p className="text-sm font-medium">{action.details}</p>
-                                <p className="text-xs text-muted-foreground flex items-center">
-                                    <Clock className="h-3 w-3 mr-1" /> {action.timestamp.toLocaleTimeString()} - {action.timestamp.toLocaleDateString()}
+                            <div className="flex-1 min-w-0"> {/* Added min-w-0 for text wrapping */}
+                                <p className={`text-sm font-medium ${action.type === 'ERROR' ? 'text-yellow-700 dark:text-yellow-300' : ''} break-words`}>{action.details}</p> {/* Added break-words */}
+                                <p className="text-xs text-muted-foreground flex items-center flex-wrap gap-x-2 mt-0.5"> {/* Added flex-wrap and gap */}
+                                    <span className="flex items-center">
+                                         <Clock className="h-3 w-3 mr-1" /> {action.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} - {action.timestamp.toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                                    </span>
                                      {action.amount && (
-                                        <span className="ml-2 flex items-center">
-                                            <DollarSign className="h-3 w-3 mr-0.5 text-green-600"/>{action.amount.toLocaleString()}
+                                        <span className="flex items-center">
+                                            <DollarSign className={`h-3 w-3 mr-0.5 ${action.type === 'BUY' ? 'text-green-600' : action.type === 'SELL' ? 'text-red-600' : ''}`}/>
+                                            {action.amount.toLocaleString()}
                                         </span>
                                     )}
+                                     {action.ticker && action.type !== 'BUY' && action.type !== 'SELL' && ( // Show ticker for INFO/ERROR if present
+                                        <span className="text-xs font-mono bg-muted px-1 rounded">{action.ticker}</span>
+                                     )}
                                 </p>
                             </div>
-                            {/* Optionally add a badge for the type */}
-                            {/* <Badge variant="secondary" className="text-xs">{action.type}</Badge> */}
                         </li>
                     ))}
                  </ul>

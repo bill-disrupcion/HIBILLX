@@ -1,4 +1,3 @@
-// @ts-nocheck
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -21,9 +20,10 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 import { getPositions, type Position, getMarketData, type MarketData, getHistoricalData } from '@/services/broker-api';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TrendingUp, TrendingDown, Minus, Info } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Info, AlertTriangle } from 'lucide-react'; // Added AlertTriangle
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert" // Added Alert
 
 
 // Calculate overall portfolio historical data (more complex, requires individual asset history and weights)
@@ -42,11 +42,13 @@ export default function PortfolioOverview() {
   const [positions, setPositions] = useState<Position[] | null>(null);
   const [marketDataMap, setMarketDataMap] = useState<Record<string, MarketData>>({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null); // General error for positions/market data
   const [chartData, setChartData] = useState<{ date: string; value: number }[]>([]);
   const [chartRange, setChartRange] = useState<string>('1m'); // Default to 1 month
   const [chartTicker, setChartTicker] = useState<string | null>(null); // Ticker being charted
   const [loadingChart, setLoadingChart] = useState(false);
+  const [chartError, setChartError] = useState<string | null>(null); // Specific error for chart data
+
 
    const formatCurrency = useCallback((value: number | undefined) => {
     if (value === undefined || isNaN(value)) return '$--.--';
@@ -55,7 +57,8 @@ export default function PortfolioOverview() {
 
   // Memoize portfolio calculations
    const { portfolioValue, totalInvested, totalGainLoss, totalGainLossPercent } = useMemo(() => {
-    if (!positions || Object.keys(marketDataMap).length === 0) {
+    // Ensure positions and marketDataMap are not null/empty before calculating
+    if (!positions || positions.length === 0 || !marketDataMap || Object.keys(marketDataMap).length === 0) {
       return { portfolioValue: 0, totalInvested: 0, totalGainLoss: 0, totalGainLossPercent: 0 };
     }
 
@@ -63,11 +66,19 @@ export default function PortfolioOverview() {
     let investedTotal = 0;
 
     positions.forEach((position) => {
-      const currentPrice = marketDataMap[position.ticker]?.price || 0;
-      currentTotalValue += position.quantity * currentPrice;
-      investedTotal += position.quantity * position.averagePrice;
+      const currentPrice = marketDataMap[position.ticker]?.price;
+       // Only include positions where we have a valid current price
+      if (typeof currentPrice === 'number' && currentPrice >= 0) {
+          currentTotalValue += position.quantity * currentPrice;
+          investedTotal += position.quantity * position.averagePrice;
+      } else {
+         console.warn(`Missing or invalid market price for ${position.ticker} in portfolio calculation.`);
+         // Optionally handle this case, e.g., by using averagePrice as a fallback or excluding it
+         // For simplicity, we exclude it here if price is missing/invalid.
+      }
     });
 
+    // Avoid division by zero if totalInvested is 0 or negative (unlikely but possible)
     const gainLoss = currentTotalValue - investedTotal;
     const gainLossPercent = investedTotal > 0 ? (gainLoss / investedTotal) * 100 : 0;
 
@@ -82,82 +93,113 @@ export default function PortfolioOverview() {
 
   // Determine which ticker to chart initially
   useEffect(() => {
-    if (positions && positions.length > 0) {
-      // Prioritize a broad market ETF like VOO if present
+    // Only set chart ticker if positions and market data are loaded successfully
+    if (positions && positions.length > 0 && Object.keys(marketDataMap).length > 0 && !chartTicker) {
       const vooPosition = positions.find(p => p.ticker === 'VOO');
       if (vooPosition) {
         setChartTicker('VOO');
       } else {
-        // Otherwise, chart the largest holding by current value
         let largestTicker = positions[0].ticker;
-        let largestValue = 0;
+        let largestValue = -Infinity; // Use -Infinity to handle potential negative values correctly
         positions.forEach(pos => {
-           const value = (marketDataMap[pos.ticker]?.price || 0) * pos.quantity;
-           if (value > largestValue) {
-               largestValue = value;
-               largestTicker = pos.ticker;
+           const currentPrice = marketDataMap[pos.ticker]?.price;
+           if (typeof currentPrice === 'number' && currentPrice >= 0) {
+                const value = currentPrice * pos.quantity;
+                if (value > largestValue) {
+                    largestValue = value;
+                    largestTicker = pos.ticker;
+                }
            }
         });
-        setChartTicker(largestTicker);
+         if (largestValue > -Infinity) { // Ensure we found at least one valid position
+             setChartTicker(largestTicker);
+         } else {
+              console.warn("Could not determine largest holding for initial chart.");
+         }
       }
     }
-  }, [positions, marketDataMap]); // Depend on positions and market data
+  }, [positions, marketDataMap, chartTicker]); // Added chartTicker dependency to prevent re-running if already set
 
   // Fetch initial positions and market data
   useEffect(() => {
     const fetchInitialData = async () => {
       setLoading(true);
       setError(null);
+      setMarketDataMap({}); // Clear previous data
+      setPositions(null);   // Clear previous data
       try {
         const fetchedPositions = await getPositions();
         setPositions(fetchedPositions);
 
-        if (fetchedPositions.length > 0) {
-             const marketDataPromises = fetchedPositions.map(p => getMarketData(p.ticker));
+        if (fetchedPositions && fetchedPositions.length > 0) {
+             // Fetch market data concurrently for all positions
+             const marketDataPromises = fetchedPositions.map(p =>
+                getMarketData(p.ticker).catch(err => {
+                    console.error(`Failed to fetch market data for ${p.ticker}:`, err);
+                    return null; // Return null on individual fetch error
+                })
+             );
             const marketDataResults = await Promise.all(marketDataPromises);
 
             const dataMap: Record<string, MarketData> = {};
             marketDataResults.forEach(md => {
-              if (md) { // Check if market data was successfully fetched
+              // Only add valid market data to the map
+              if (md && md.ticker && typeof md.price === 'number') {
                  dataMap[md.ticker] = md;
               }
             });
             setMarketDataMap(dataMap);
+             // Check if any market data fetch failed
+             if (Object.keys(dataMap).length < fetchedPositions.length) {
+                 console.warn("Some market data could not be fetched for the positions.");
+                 // Optionally set a partial error state here
+             }
+
         } else {
             setMarketDataMap({}); // No positions, empty map
+            setPositions([]); // Set to empty array if no positions
         }
 
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to fetch portfolio data:", err);
-        setError("Failed to load portfolio data. Please try again later.");
+        setError(`Failed to load portfolio data: ${err.message || 'Please try again later.'}`);
+         setPositions([]); // Set empty array on error
+         setMarketDataMap({}); // Clear map on error
       } finally {
         setLoading(false);
       }
     };
 
     fetchInitialData();
-  }, []);
+  }, []); // Re-fetch when component mounts
 
    // Fetch historical chart data when ticker or range changes
    useEffect(() => {
-    if (!chartTicker) return;
+    if (!chartTicker) return; // Don't fetch if no ticker is selected
 
     const fetchChartData = async () => {
       setLoadingChart(true);
+      setChartError(null); // Clear previous chart errors
+      setChartData([]);    // Clear previous chart data
       try {
         const history = await getHistoricalData(chartTicker, chartRange);
+        // Basic validation on fetched data
+         if (!Array.isArray(history) || history.length === 0) {
+             throw new Error("No historical data returned.");
+         }
+         // Further validation could check for date/value properties
         setChartData(history);
-      } catch (err) {
+      } catch (err: any) {
         console.error(`Failed to fetch historical data for ${chartTicker}:`, err);
-        // Handle error for chart specifically, maybe show a message on the chart area
-        setChartData([]); // Clear previous data on error
+        setChartError(`Could not load chart data for ${chartTicker}: ${err.message || 'Please try again.'}`);
+        setChartData([]); // Ensure data is empty on error
       } finally {
         setLoadingChart(false);
       }
     };
 
     fetchChartData();
-  }, [chartTicker, chartRange]);
+   }, [chartTicker, chartRange]); // Dependencies: ticker and range
 
 
   const renderGainLossIcon = (value: number) => {
@@ -175,14 +217,14 @@ export default function PortfolioOverview() {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
            <div>
               <CardTitle>Portfolio Overview</CardTitle>
               <CardDescription>Your current investment status.</CardDescription>
            </div>
-            {/* Chart Range Selector */}
-            <Select value={chartRange} onValueChange={setChartRange}>
-              <SelectTrigger className="w-[100px]" aria-label="Select chart time range">
+            {/* Chart Range Selector - Disable if loading or error */}
+            <Select value={chartRange} onValueChange={setChartRange} disabled={loading || !!error || loadingChart}>
+              <SelectTrigger className="w-full sm:w-[100px]" aria-label="Select chart time range">
                 <SelectValue placeholder="Range" />
               </SelectTrigger>
               <SelectContent>
@@ -195,16 +237,33 @@ export default function PortfolioOverview() {
       </CardHeader>
       <CardContent className="space-y-6">
         {loading ? (
-          <div className="space-y-4">
-            <Skeleton className="h-10 w-1/3" />
-            <Skeleton className="h-6 w-1/4" />
-            <Skeleton className="h-64 w-full" />
-            <Skeleton className="h-48 w-full" />
+          // Consistent Loading Skeletons
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-2 md:space-y-0">
+                 <div className="space-y-1">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-9 w-40" />
+                 </div>
+                 <div className="flex items-center space-x-1">
+                     <Skeleton className="h-4 w-4" />
+                     <Skeleton className="h-6 w-28" />
+                     <Skeleton className="h-4 w-16" />
+                 </div>
+            </div>
+            <Skeleton className="h-[250px] w-full" />
+            <Skeleton className="h-40 w-full" />
           </div>
         ) : error ? (
-          <p className="text-destructive">{error}</p>
+           // Clear Error Display
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Error Loading Portfolio</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
         ) : (
+           // Main Content Display
           <>
+            {/* Portfolio Summary */}
             <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-2 md:space-y-0">
                <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">Total Value</p>
@@ -224,101 +283,122 @@ export default function PortfolioOverview() {
                              <Info className="h-3 w-3 text-muted-foreground cursor-help ml-1" />
                         </TooltipTrigger>
                         <TooltipContent>
-                            <p>Total gain/loss since inception based on average cost.</p>
+                            <p>Total gain/loss based on average cost vs current market value.</p>
                         </TooltipContent>
                     </Tooltip>
                  </TooltipProvider>
               </div>
             </div>
 
-            {/* Performance Chart */}
-             <div className="h-[250px] w-full relative">
-                 {loadingChart && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
+            {/* Performance Chart Section */}
+             <div className="h-[250px] w-full relative border rounded-md p-2">
+                 {loadingChart ? (
+                     <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10 rounded-md">
                          <Skeleton className="h-full w-full" />
+                          <span className="absolute text-sm text-muted-foreground">Loading chart data...</span>
+                     </div>
+                 ) : chartError ? (
+                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-10 rounded-md text-center p-4">
+                         <AlertTriangle className="h-6 w-6 text-destructive mb-2" />
+                        <p className="text-sm font-medium text-destructive">Chart Error</p>
+                        <p className="text-xs text-destructive">{chartError}</p>
                     </div>
-                 )}
-                 {!loadingChart && chartData.length === 0 && (
-                     <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
-                        <p className="text-muted-foreground">No chart data available for {chartTicker}.</p>
+                 ) : chartData.length === 0 || !chartTicker ? (
+                      <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10 rounded-md">
+                        <p className="text-sm text-muted-foreground p-4 text-center">
+                            {chartTicker ? `No historical data available for ${chartTicker}.` : 'Select a position or ensure data is loaded to view chart.'}
+                        </p>
                     </div>
-                 )}
-                 <ChartContainer config={chartConfig} className="h-full w-full">
-                     <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                          <XAxis
-                            dataKey="date"
-                            tickLine={false}
-                            axisLine={false}
-                            tickMargin={8}
-                             // Dynamically format ticks based on range
-                             tickFormatter={(value, index) => {
-                                const date = new Date(value + 'T00:00:00'); // Ensure correct date parsing
-                                if (chartRange === '1m') {
-                                     // Show date number every 7 days approx
-                                    return index % 7 === 0 ? date.toLocaleDateString('en-US', { day: 'numeric' }) : '';
-                                } else if (chartRange === '6m') {
-                                    // Show month abbr
-                                    return date.toLocaleDateString('en-US', { month: 'short' });
-                                } else { // 1y
-                                    // Show month abbr every 2 months approx
-                                    return index % 60 === 0 ? date.toLocaleDateString('en-US', { month: 'short' }) : '';
-                                }
-                             }}
-                             interval={chartRange === '6m' || chartRange === '1y' ? 'preserveStartEnd' : 'equidistantPreserveStart'}
-                             minTickGap={chartRange === '1m' ? 10 : 30} // Adjust gap based on density
-                         />
-                         <YAxis
-                            tickLine={false}
-                            axisLine={false}
-                            tickMargin={5}
-                            domain={['dataMin - (dataMax-dataMin)*0.05', 'dataMax + (dataMax-dataMin)*0.05']}
-                            tickFormatter={(value) => `$${value.toFixed(0)}`}
-                            width={40}
-                          />
-                         <ChartTooltip
-                            cursor={false}
-                            content={
-                                <ChartTooltipContent
-                                    labelFormatter={(label) => new Date(label + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                                    formatter={(value) => formatCurrency(value as number)}
-                                    indicator="line"
-                                    labelClassName="text-sm"
-                                    nameKey="name"
-                                />
-                            }
+                 ) : (
+                     // Render Chart only if data is available
+                     <>
+                         <ChartContainer config={chartConfig} className="h-full w-full">
+                             <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                  <XAxis
+                                    dataKey="date"
+                                    tickLine={false}
+                                    axisLine={false}
+                                    tickMargin={8}
+                                     tickFormatter={(value, index) => {
+                                        try {
+                                            const date = new Date(value + 'T00:00:00Z'); // Use Z for UTC to avoid timezone issues
+                                            if (isNaN(date.getTime())) return ''; // Invalid date
+                                            const dayOfMonth = date.getUTCDate();
 
-                         />
-                         <defs>
-                           <linearGradient id="fillValue" x1="0" y1="0" x2="0" y2="1">
-                             <stop offset="5%" stopColor="var(--color-value)" stopOpacity={0.8}/>
-                             <stop offset="95%" stopColor="var(--color-value)" stopOpacity={0.1}/>
-                           </linearGradient>
-                         </defs>
-                         <Area
-                            dataKey="value"
-                            type="natural"
-                            fill="url(#fillValue)"
-                            stroke="var(--color-value)"
-                            strokeWidth={2}
-                            stackId="a" // Note: stackId not really needed for single Area
-                            name={chartTicker || "Value"} // Set name for tooltip
-                            dot={false}
-                         />
-                     </AreaChart>
-                 </ChartContainer>
-                  {chartTicker && !loadingChart && (
-                      <div className="absolute top-0 right-2 text-xs text-muted-foreground p-1 bg-background/70 rounded">
-                         Charting: {chartTicker}
-                      </div>
-                  )}
+                                            if (chartRange === '1m') {
+                                                return index % 7 === 0 ? dayOfMonth.toString() : ''; // Approx weekly
+                                            } else if (chartRange === '6m' || chartRange === '1y') {
+                                                // Show month abbr, more frequently for 6m
+                                                const monthInterval = chartRange === '6m' ? 30 : 60;
+                                                 // Show first tick and ticks approx every month/two months
+                                                return index === 0 || index % monthInterval < (monthInterval / (chartData.length / numPoints || 1))
+                                                     ? date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
+                                                     : '';
+                                            } else {
+                                                return ''; // Default case
+                                            }
+                                        } catch (e) { return ''; } // Catch potential date parsing errors
+                                     }}
+                                     interval="preserveStartEnd"
+                                     minTickGap={chartRange === '1m' ? 10 : 30}
+                                 />
+                                 <YAxis
+                                    tickLine={false}
+                                    axisLine={false}
+                                    tickMargin={5}
+                                    domain={['dataMin - (dataMax-dataMin)*0.05', 'dataMax + (dataMax-dataMin)*0.05']}
+                                    tickFormatter={(value) => `$${value.toFixed(0)}`}
+                                    width={45} // Increased width slightly for better spacing
+                                  />
+                                 <ChartTooltip
+                                    cursor={true} // Enable cursor for better interaction
+                                    content={
+                                        <ChartTooltipContent
+                                            labelFormatter={(label) => {
+                                                 try {
+                                                     return new Date(label + 'T00:00:00Z').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
+                                                 } catch { return label; }
+                                            }}
+                                            formatter={(value) => formatCurrency(value as number)}
+                                            indicator="dot" // Changed indicator style
+                                            labelClassName="text-sm font-semibold"
+                                            nameKey="name"
+                                        />
+                                    }
+                                 />
+                                 <defs>
+                                   <linearGradient id="fillValue" x1="0" y1="0" x2="0" y2="1">
+                                     <stop offset="5%" stopColor="var(--color-value)" stopOpacity={0.8}/>
+                                     <stop offset="95%" stopColor="var(--color-value)" stopOpacity={0.1}/>
+                                   </linearGradient>
+                                 </defs>
+                                 <Area
+                                    dataKey="value"
+                                    type="monotone" // Changed type for smoother curve
+                                    fill="url(#fillValue)"
+                                    stroke="var(--color-value)"
+                                    strokeWidth={2}
+                                    name={chartTicker || "Value"}
+                                    dot={false} // Hide dots for cleaner look
+                                    activeDot={{ r: 4, strokeWidth: 1, fill: 'hsl(var(--background))', stroke: 'var(--color-value)' }} // Style active dot on hover
+                                 />
+                             </AreaChart>
+                         </ChartContainer>
+                          {chartTicker && (
+                              <div className="absolute top-1 right-2 text-xs text-muted-foreground p-1 bg-background/70 rounded">
+                                 Charting: {chartTicker} ({chartRange.toUpperCase()})
+                              </div>
+                          )}
+                     </>
+                 )}
              </div>
 
 
             {/* Positions Table */}
             <div>
               <h3 className="text-lg font-medium mb-2">Current Positions</h3>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto border rounded-md">
                     <Table>
                         <TableHeader>
                         <TableRow>
@@ -334,38 +414,49 @@ export default function PortfolioOverview() {
                         {positions && positions.length > 0 ? (
                              positions.map((pos) => {
                                 const currentMarketData = marketDataMap[pos.ticker];
-                                const currentPrice = currentMarketData?.price ?? 0; // Use 0 if no data
-                                const totalValue = pos.quantity * currentPrice;
+                                const currentPrice = currentMarketData?.price; // Can be undefined if fetch failed
+                                const hasValidPrice = typeof currentPrice === 'number' && currentPrice >= 0;
+
+                                const totalValue = hasValidPrice ? pos.quantity * currentPrice : undefined;
                                 const costBasis = pos.quantity * pos.averagePrice;
-                                const gainLoss = totalValue - costBasis;
-                                const gainLossPercent = costBasis > 0 ? (gainLoss / costBasis) * 100 : 0;
+                                const gainLoss = hasValidPrice ? totalValue! - costBasis : undefined;
+                                const gainLossPercent = (hasValidPrice && costBasis > 0) ? (gainLoss! / costBasis) * 100 : 0;
 
                                 return (
-                                    <TableRow key={pos.ticker}>
+                                    <TableRow key={pos.ticker} className="hover:bg-muted/30">
                                         <TableCell className="font-medium">{pos.ticker}</TableCell>
-                                        <TableCell className="text-right">{pos.quantity}</TableCell>
+                                        <TableCell className="text-right">{pos.quantity.toLocaleString()}</TableCell>
                                         <TableCell className="text-right">{formatCurrency(pos.averagePrice)}</TableCell>
-                                        <TableCell className="text-right">{currentPrice > 0 ? formatCurrency(currentPrice) : '--'}</TableCell>
-                                        <TableCell className="text-right">{currentPrice > 0 ? formatCurrency(totalValue) : '--'}</TableCell>
-                                        <TableCell className={`text-right ${getGainLossColor(gainLoss)}`}>
-                                            {currentPrice > 0 ? (
+                                        <TableCell className="text-right">
+                                             {hasValidPrice ? formatCurrency(currentPrice) : <span className="text-muted-foreground">N/A</span>}
+                                         </TableCell>
+                                        <TableCell className="text-right">
+                                             {hasValidPrice ? formatCurrency(totalValue) : <span className="text-muted-foreground">N/A</span>}
+                                        </TableCell>
+                                        <TableCell className={`text-right ${hasValidPrice ? getGainLossColor(gainLoss!) : 'text-muted-foreground'}`}>
+                                            {hasValidPrice ? (
                                                 <>
                                                 {formatCurrency(gainLoss)}
                                                 <span className="block text-xs">({gainLossPercent.toFixed(2)}%)</span>
                                                 </>
-                                            ) : '--'}
+                                            ) : <span className="text-muted-foreground">N/A</span>}
                                         </TableCell>
                                     </TableRow>
                                 )
                              })
                         ) : (
                              <TableRow>
-                                <TableCell colSpan={6} className="text-center text-muted-foreground h-24">No positions held.</TableCell>
+                                <TableCell colSpan={6} className="text-center text-muted-foreground h-24">
+                                   {positions === null ? 'Loading positions...' : 'No positions held.'}
+                                </TableCell>
                              </TableRow>
                          )}
                         </TableBody>
                     </Table>
                 </div>
+                 {!loading && positions && positions.length > 0 && Object.keys(marketDataMap).length < positions.length && (
+                    <p className="text-xs text-destructive mt-2">Note: Some market data could not be loaded. Values may be incomplete.</p>
+                 )}
             </div>
           </>
         )}
