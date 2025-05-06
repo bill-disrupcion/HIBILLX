@@ -10,7 +10,7 @@ import {
   SidebarMenuItem,
   SidebarTrigger,
 } from '@/components/ui/sidebar';
-import { Bot, Home, LineChart, Users } from 'lucide-react';
+import { Bot, Home, LineChart, Users, BookOpen } from 'lucide-react'; // Added BookOpen
 import React, { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation'; // Import Next.js navigation hooks
 
@@ -36,6 +36,8 @@ export default function AppSidebar() {
       setActiveItem('bill-x');
     } else if (pathname === '/performance') {
        setActiveItem('performance');
+    } else if (pathname === '/repository') { // Added repository path
+         setActiveItem('repository');
     } else if (pathname === '/referrals') {
          setActiveItem('referrals');
     } else {
@@ -83,6 +85,16 @@ export default function AppSidebar() {
             >
               <Bot />
               <span>Bill X</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+           <SidebarMenuItem>
+            <SidebarMenuButton
+               onClick={() => handleItemClick('repository', '/repository')} // Added Repository item
+              isActive={activeItem === 'repository'}
+              tooltip="Repository"
+            >
+              <BookOpen />
+              <span>Repository</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
