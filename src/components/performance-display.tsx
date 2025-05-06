@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; // Import useRef
 import {
   Card,
   CardContent,
@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Bot, Activity, Clock, Zap, TrendingUp, DollarSign, TrendingDown } from 'lucide-react'; // Added TrendingDown
+import { Bot, Activity, Clock, Zap, TrendingUp, DollarSign, TrendingDown } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface AgentAction {
@@ -31,8 +31,8 @@ const mockAgentStatus = {
   strategy: 'Balanced Approach', // Example strategy if mode is 'strategy'
 };
 
-// Mock function to generate random agent actions
-const generateMockAction = (lastId: number): AgentAction => {
+// Mock function to generate random agent actions - modified to use a counter ref
+const generateMockAction = (idCounterRef: React.MutableRefObject<number>): AgentAction => {
   const types: AgentAction['type'][] = ['BUY', 'SELL', 'REBALANCE', 'INFO'];
   const tickers = ['AAPL', 'MSFT', 'VOO', 'TSLA', 'AGG', 'XOM', 'GOOGL', 'NVDA'];
   const type = types[Math.floor(Math.random() * types.length)];
@@ -66,8 +66,10 @@ const generateMockAction = (lastId: number): AgentAction => {
       break;
   }
 
+  idCounterRef.current += 1; // Increment the ID counter
+
   return {
-    id: lastId + 1,
+    id: idCounterRef.current, // Use the incremented ID
     timestamp: new Date(),
     type,
     details,
@@ -81,30 +83,31 @@ export default function PerformanceDisplay() {
   const [agentStatus, setAgentStatus] = useState(mockAgentStatus); // Use mock status for now
   const [actions, setActions] = useState<AgentAction[]>([]);
   const [loading, setLoading] = useState(true);
+  const actionIdCounter = useRef<number>(0); // Ref to store the last used ID
 
   useEffect(() => {
     // Simulate initial loading of actions
     const initialActions: AgentAction[] = [];
     for (let i = 0; i < 5; i++) {
         // Generate slightly older timestamps for initial load
-        const action = generateMockAction(initialActions.length > 0 ? initialActions[initialActions.length - 1].id : 0);
+        const action = generateMockAction(actionIdCounter); // Pass the ref
         action.timestamp = new Date(Date.now() - (5 - i) * 60000 * Math.random()); // Within last 5 mins
         initialActions.push(action);
     }
-    setActions(initialActions.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())); // Sort descending
+    setActions(initialActions.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())); // Sort descending by time
     setLoading(false);
 
     // Simulate real-time updates
     const intervalId = setInterval(() => {
       setActions((prevActions) => {
-        const newAction = generateMockAction(prevActions.length > 0 ? prevActions[0].id : 0);
+        const newAction = generateMockAction(actionIdCounter); // Pass the ref
         // Keep max 50 actions for performance
         return [newAction, ...prevActions].slice(0, 50);
       });
     }, 8000); // Add a new action every 8 seconds
 
     return () => clearInterval(intervalId); // Cleanup interval on unmount
-  }, []);
+  }, []); // Empty dependency array ensures this runs only once on mount
 
 
   const getStatusBadgeVariant = (status: boolean) => {
