@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -48,6 +49,7 @@ export default function PortfolioOverview() {
   const [chartTicker, setChartTicker] = useState<string | null>(null); // Ticker being charted
   const [loadingChart, setLoadingChart] = useState(false);
   const [chartError, setChartError] = useState<string | null>(null); // Specific error for chart data
+  const [partialDataWarning, setPartialDataWarning] = useState<string | null>(null); // Specific warning for partial market data
 
 
    const formatCurrency = useCallback((value: number | undefined) => {
@@ -58,7 +60,7 @@ export default function PortfolioOverview() {
   // Memoize portfolio calculations
    const { portfolioValue, totalInvested, totalGainLoss, totalGainLossPercent } = useMemo(() => {
     // Ensure positions and marketDataMap are not null/empty before calculating
-    if (!positions || positions.length === 0 || !marketDataMap || Object.keys(marketDataMap).length === 0) {
+    if (!positions || positions.length === 0) { // Market data check removed here, handled below
       return { portfolioValue: 0, totalInvested: 0, totalGainLoss: 0, totalGainLossPercent: 0 };
     }
 
@@ -73,8 +75,8 @@ export default function PortfolioOverview() {
           investedTotal += position.quantity * position.averagePrice;
       } else {
          console.warn(`Missing or invalid market price for ${position.ticker} in portfolio calculation.`);
-         // Optionally handle this case, e.g., by using averagePrice as a fallback or excluding it
-         // For simplicity, we exclude it here if price is missing/invalid.
+         // Still count the invested amount even if current price is missing
+         investedTotal += position.quantity * position.averagePrice;
       }
     });
 
@@ -125,6 +127,7 @@ export default function PortfolioOverview() {
     const fetchInitialData = async () => {
       setLoading(true);
       setError(null);
+      setPartialDataWarning(null); // Clear previous warning
       setMarketDataMap({}); // Clear previous data
       setPositions(null);   // Clear previous data
       try {
@@ -133,11 +136,17 @@ export default function PortfolioOverview() {
 
         if (fetchedPositions && fetchedPositions.length > 0) {
              // Fetch market data concurrently for all positions
+             let successfulFetches = 0;
              const marketDataPromises = fetchedPositions.map(p =>
-                getMarketData(p.ticker).catch(err => {
-                    console.error(`Failed to fetch market data for ${p.ticker}:`, err);
-                    return null; // Return null on individual fetch error
-                })
+                getMarketData(p.ticker)
+                    .then(data => {
+                        successfulFetches++;
+                        return data;
+                    })
+                    .catch(err => {
+                        console.error(`Failed to fetch market data for ${p.ticker}:`, err);
+                        return null; // Return null on individual fetch error
+                    })
              );
             const marketDataResults = await Promise.all(marketDataPromises);
 
@@ -150,9 +159,9 @@ export default function PortfolioOverview() {
             });
             setMarketDataMap(dataMap);
              // Check if any market data fetch failed
-             if (Object.keys(dataMap).length < fetchedPositions.length) {
-                 console.warn("Some market data could not be fetched for the positions.");
-                 // Optionally set a partial error state here
+             if (successfulFetches < fetchedPositions.length) {
+                 const failedCount = fetchedPositions.length - successfulFetches;
+                 setPartialDataWarning(`Could not load market data for ${failedCount} position(s). Portfolio value may be incomplete.`);
              }
 
         } else {
@@ -214,6 +223,12 @@ export default function PortfolioOverview() {
      return "text-muted-foreground";
    }
 
+   // Determine if we should show an error/warning alert
+   const shouldShowAlert = error || partialDataWarning;
+   const alertVariant = error ? "destructive" : "default";
+   const alertTitle = error ? "Error Loading Portfolio" : "Partial Data Loaded";
+   const alertDescription = error || partialDataWarning;
+
   return (
     <Card>
       <CardHeader>
@@ -253,21 +268,22 @@ export default function PortfolioOverview() {
             <Skeleton className="h-[250px] w-full" />
             <Skeleton className="h-40 w-full" />
           </div>
-        ) : error ? (
-           // Clear Error Display
-            <Alert variant="destructive">
+        ) : shouldShowAlert ? ( // Show alert if there's a general error OR a partial data warning
+           // Clear Error/Warning Display
+            <Alert variant={alertVariant} className={!error ? 'border-yellow-500/50 text-yellow-700 dark:border-yellow-600/50 dark:text-yellow-300 [&>svg]:text-yellow-500 dark:[&>svg]:text-yellow-500' : ''}>
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Error Loading Portfolio</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
+              <AlertTitle>{alertTitle}</AlertTitle>
+              <AlertDescription>{alertDescription}</AlertDescription>
             </Alert>
         ) : (
-           // Main Content Display
+           // Main Content Display (only if not loading and no major error)
           <>
             {/* Portfolio Summary */}
             <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-2 md:space-y-0">
                <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">Total Value</p>
                 <p className="text-3xl font-bold">{formatCurrency(portfolioValue)}</p>
+                 {partialDataWarning && <p className="text-xs text-yellow-600 dark:text-yellow-400">(Incomplete)</p>}
               </div>
               <div className={`flex items-center space-x-1 ${getGainLossColor(totalGainLoss)}`}>
                  {renderGainLossIcon(totalGainLoss)}
@@ -284,6 +300,7 @@ export default function PortfolioOverview() {
                         </TooltipTrigger>
                         <TooltipContent>
                             <p>Total gain/loss based on average cost vs current market value.</p>
+                             {partialDataWarning && <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">Based on available data.</p>}
                         </TooltipContent>
                     </Tooltip>
                  </TooltipProvider>
@@ -325,23 +342,33 @@ export default function PortfolioOverview() {
                                             const date = new Date(value + 'T00:00:00Z'); // Use Z for UTC to avoid timezone issues
                                             if (isNaN(date.getTime())) return ''; // Invalid date
                                             const dayOfMonth = date.getUTCDate();
+                                            const numPoints = chartData.length; // Get actual number of points
 
                                             if (chartRange === '1m') {
-                                                return index % 7 === 0 ? dayOfMonth.toString() : ''; // Approx weekly
-                                            } else if (chartRange === '6m' || chartRange === '1y') {
-                                                // Show month abbr, more frequently for 6m
-                                                const monthInterval = chartRange === '6m' ? 30 : 60;
-                                                 // Show first tick and ticks approx every month/two months
-                                                return index === 0 || index % monthInterval < (monthInterval / (chartData.length / numPoints || 1))
-                                                     ? date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
+                                                // Show first, last, and roughly weekly ticks for 1m
+                                                const weekInterval = Math.max(1, Math.floor(numPoints / 4)); // Approx 4 weeks
+                                                return index === 0 || index === numPoints - 1 || index % weekInterval === 0
+                                                    ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+                                                    : '';
+                                            } else if (chartRange === '6m') {
+                                                // Show first, last, and approx monthly ticks for 6m
+                                                const monthInterval = Math.max(1, Math.floor(numPoints / 6)); // Approx 6 months
+                                                return index === 0 || index === numPoints - 1 || index % monthInterval === 0
+                                                    ? date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
+                                                    : '';
+                                            } else if (chartRange === '1y') {
+                                                 // Show first, last, and approx quarterly ticks for 1y
+                                                const quarterInterval = Math.max(1, Math.floor(numPoints / 4)); // Approx 4 quarters
+                                                return index === 0 || index === numPoints - 1 || index % quarterInterval === 0
+                                                     ? date.toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' })
                                                      : '';
                                             } else {
                                                 return ''; // Default case
                                             }
                                         } catch (e) { return ''; } // Catch potential date parsing errors
                                      }}
-                                     interval="preserveStartEnd"
-                                     minTickGap={chartRange === '1m' ? 10 : 30}
+                                     interval="preserveStartEnd" // Ensure start and end labels are shown if generated
+                                     minTickGap={chartRange === '1m' ? 5 : 15} // Adjust gap based on density
                                  />
                                  <YAxis
                                     tickLine={false}
@@ -428,10 +455,10 @@ export default function PortfolioOverview() {
                                         <TableCell className="text-right">{pos.quantity.toLocaleString()}</TableCell>
                                         <TableCell className="text-right">{formatCurrency(pos.averagePrice)}</TableCell>
                                         <TableCell className="text-right">
-                                             {hasValidPrice ? formatCurrency(currentPrice) : <span className="text-muted-foreground">N/A</span>}
+                                             {hasValidPrice ? formatCurrency(currentPrice) : <span className="text-xs text-muted-foreground italic">Loading...</span>}
                                          </TableCell>
                                         <TableCell className="text-right">
-                                             {hasValidPrice ? formatCurrency(totalValue) : <span className="text-muted-foreground">N/A</span>}
+                                             {hasValidPrice ? formatCurrency(totalValue) : <span className="text-xs text-muted-foreground italic">Loading...</span>}
                                         </TableCell>
                                         <TableCell className={`text-right ${hasValidPrice ? getGainLossColor(gainLoss!) : 'text-muted-foreground'}`}>
                                             {hasValidPrice ? (
@@ -439,7 +466,7 @@ export default function PortfolioOverview() {
                                                 {formatCurrency(gainLoss)}
                                                 <span className="block text-xs">({gainLossPercent.toFixed(2)}%)</span>
                                                 </>
-                                            ) : <span className="text-muted-foreground">N/A</span>}
+                                            ) : <span className="text-xs text-muted-foreground italic">Loading...</span>}
                                         </TableCell>
                                     </TableRow>
                                 )
@@ -454,9 +481,7 @@ export default function PortfolioOverview() {
                         </TableBody>
                     </Table>
                 </div>
-                 {!loading && positions && positions.length > 0 && Object.keys(marketDataMap).length < positions.length && (
-                    <p className="text-xs text-destructive mt-2">Note: Some market data could not be loaded. Values may be incomplete.</p>
-                 )}
+                 {/* Moved partial data warning to the alert above */}
             </div>
           </>
         )}
@@ -464,3 +489,4 @@ export default function PortfolioOverview() {
     </Card>
   );
 }
+

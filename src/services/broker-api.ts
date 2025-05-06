@@ -1,3 +1,4 @@
+
 /**
  * Represents a financial instrument.
  */
@@ -93,9 +94,9 @@ export interface Position {
 
 // --- Configuration ---
 const MOCK_API_DELAY_MS = {
-    FAST: 150,
-    MEDIUM: 400,
-    SLOW: 700,
+    FAST: 250, // Increased delay
+    MEDIUM: 500, // Increased delay
+    SLOW: 800, // Increased delay
 };
 const MOCK_API_ERROR_RATE = 0.05; // 5% chance of simulated API error
 
@@ -325,8 +326,20 @@ export async function getPositions(): Promise<Position[]> {
    }
 
    const data = [];
-   const currentMarketData = await getMarketData(ticker); // Use current as a reference
+   let currentMarketData: MarketData | null = null;
+   try {
+     currentMarketData = await getMarketData(ticker); // Use current as a reference
+   } catch (err) {
+      console.warn(`Could not fetch current market data for ${ticker} while generating history, using base price.`);
+      const basePrice = {
+        'AAPL': 190, 'GOOGL': 175, 'MSFT': 430, 'AMZN': 185, 'TSLA': 180,
+        'NVDA': 120, 'VOO': 510, 'AGG': 96, 'JPM': 195, 'XOM': 115,
+        'VNQ': 85, 'GLD': 215
+      }[ticker] || 100;
+       currentMarketData = { ticker, price: basePrice, timestamp: new Date() };
+   }
    let currentValue = currentMarketData.price;
+
 
    // Adjust starting value crudely based on range
    const rangeFactor = { '1m': 0.05, '6m': 0.15, '1y': 0.25 }[range] || 0.05;
@@ -345,13 +358,13 @@ export async function getPositions(): Promise<Position[]> {
        // Simulate next day's price based on previous
        currentValue /= drift; // Reverse drift
        currentValue /= (1 + (Math.random() - 0.5) * dailyVolatility);
-       currentValue = Math.max(currentValue, 1);
+       currentValue = Math.max(currentValue, 1); // Ensure price doesn't go below 1
    }
     // Ensure data is sorted correctly by date ascending
     data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
    // Ensure the last point matches the 'current' price fetched for consistency
-   if (data.length > 0) {
+   if (data.length > 0 && currentMarketData) {
        data[data.length - 1].value = currentMarketData.price;
    }
 
@@ -369,3 +382,4 @@ export async function getPositions(): Promise<Position[]> {
 //   - Fetching account balance/buying power (getAccountDetails())
 //   - Managing watchlists
 //   - Fetching company profiles, news, analyst ratings etc.
+
