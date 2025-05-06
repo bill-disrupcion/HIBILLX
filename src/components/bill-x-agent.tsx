@@ -13,16 +13,21 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Input } from '@/components/ui/input'; // Added Input
+import { Skeleton } from '@/components/ui/skeleton'; // Added Skeleton
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { Bot, DollarSign, TrendingUp, Zap, Info } from 'lucide-react';
+import { Bot, DollarSign, TrendingUp, Zap, Info, BrainCircuit, Search } from 'lucide-react'; // Added BrainCircuit, Search
 import { useToast } from '@/hooks/use-toast';
 import { Slider } from '@/components/ui/slider';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+// Import the financial knowledge flow
+import { getFinancialKnowledge, FinancialKnowledgeInput, FinancialKnowledgeOutput } from '@/ai/flows/financial-knowledge-flow';
+
 
 // Placeholder components or sections for strategy details
 const StrategyDetail = ({ title, description, minInvestment }) => (
@@ -43,6 +48,13 @@ export default function BillXAgent() {
   const [automationLevel, setAutomationLevel] = useState<'strategy' | 'full'>('strategy'); // 'strategy' or 'full'
   const [selectedStrategyAmount, setSelectedStrategyAmount] = useState(20);
   const [fullAutomationAmount, setFullAutomationAmount] = useState(300); // Minimum for full automation
+
+  // State for AI Knowledge Hub
+  const [aiQuery, setAiQuery] = useState('');
+  const [aiResponse, setAiResponse] = useState<string | null>(null);
+  const [loadingAi, setLoadingAi] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
 
   const handleToggleBillX = (enabled: boolean) => {
     if (enabled && automationLevel === 'full' && fullAutomationAmount < 300) {
@@ -104,6 +116,25 @@ export default function BillXAgent() {
     }
   };
 
+   const handleAiQuery = async () => {
+    if (!aiQuery.trim()) return;
+    setLoadingAi(true);
+    setAiResponse(null);
+    setAiError(null);
+
+    try {
+      const input: FinancialKnowledgeInput = { query: aiQuery };
+      const output: FinancialKnowledgeOutput = await getFinancialKnowledge(input);
+      setAiResponse(output.explanation);
+
+    } catch (err) {
+      console.error("AI Knowledge query failed:", err);
+      setAiError(`Failed to get information. ${err instanceof Error ? err.message : 'Please try again.'}`);
+    } finally {
+      setLoadingAi(false);
+    }
+  };
+
 
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-6">
@@ -124,6 +155,7 @@ export default function BillXAgent() {
             </div>
        </header>
 
+        {/* Automation Settings Card */}
         <Card className="bg-gradient-to-br from-card to-secondary/30">
             <CardHeader>
                 <CardTitle>AI Automation Settings</CardTitle>
@@ -317,6 +349,55 @@ export default function BillXAgent() {
                         <Button className="mt-4" disabled={!isBillXEnabled}>
                            {isBillXEnabled ? 'Update Selected Strategies' : 'Enable Bill X to Select'}
                         </Button>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+
+         {/* AI Knowledge Hub Section - Integrated */}
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center">
+                    <BrainCircuit className="mr-2 h-5 w-5 text-primary" /> Ask Bill X
+                </CardTitle>
+                <CardDescription>Leverage Bill X's financial knowledge. Ask anything!</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                 <div className="flex space-x-2">
+                    <Input
+                        type="text"
+                        placeholder="E.g., Explain dollar-cost averaging..."
+                        value={aiQuery}
+                        onChange={(e) => setAiQuery(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleAiQuery()}
+                        disabled={loadingAi}
+                    />
+                    <Button onClick={handleAiQuery} disabled={loadingAi || !aiQuery.trim()}>
+                        {loadingAi ? <Skeleton className="h-5 w-5 rounded-full animate-spin" /> : <Search className="h-5 w-5" />}
+                         <span className="ml-2 sm:inline hidden">Ask</span> {/* Hide text on small screens */}
+                    </Button>
+                 </div>
+
+                {aiError && (
+                    <Alert variant="destructive">
+                    <AlertTitle>Error</AlertTitle>
+                    <AlertDescription>{aiError}</AlertDescription>
+                    </Alert>
+                )}
+
+                 {loadingAi && (
+                    <div className="space-y-2 pt-4">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-4 w-1/2" />
+                        <Skeleton className="h-4 w-5/6" />
+                    </div>
+                 )}
+
+                 {aiResponse && !loadingAi && (
+                    <div className="pt-4 border-t mt-4 max-h-60 overflow-y-auto pr-2"> {/* Added scroll */}
+                         <h4 className="font-semibold mb-2">Bill X Says:</h4>
+                         {/* Using div with whitespace-pre-wrap for better formatting */}
+                         <div className="text-sm whitespace-pre-wrap">{aiResponse}</div>
                     </div>
                 )}
             </CardContent>

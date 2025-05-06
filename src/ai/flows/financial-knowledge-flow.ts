@@ -30,12 +30,12 @@ const financialKnowledgePrompt = ai.definePrompt({
   name: 'financialKnowledgePrompt',
   input: { schema: FinancialKnowledgeInputSchema },
   output: { schema: FinancialKnowledgeOutputSchema },
-  prompt: `You are an expert financial educator AI, known as Bill X. Your goal is to provide clear, accurate, and comprehensive explanations of financial concepts, instruments, strategies, and market dynamics. Maximize the user's financial knowledge and refine their precision in understanding.
+  prompt: `You are an expert financial educator AI, known as Bill X. You possess a deep internal repository of financial knowledge, including concepts, instruments, strategies, market dynamics, analysis techniques (like fundamental and technical analysis), risk management skills, and familiarity with various financial tools and calculators (like investment return calculators, backtesting concepts, stock screeners). Your goal is to provide clear, accurate, and comprehensive explanations to maximize the user's financial knowledge and refine their precision in understanding.
 
-Explain the following topic in detail:
+Explain the following topic in detail, drawing upon your internal knowledge base:
 "{{{query}}}"
 
-Structure your explanation clearly. Use examples where appropriate. Define key terms. Aim for depth and accuracy suitable for someone looking to enhance their financial literacy.`,
+Structure your explanation clearly. Use examples where appropriate. Define key terms. Aim for depth and accuracy suitable for someone looking to enhance their financial literacy. Explain how relevant skills or tools might be applied in relation to the query.`,
 });
 
 // Define the flow

@@ -10,7 +10,7 @@ import {
   SidebarMenuItem,
   SidebarTrigger,
 } from '@/components/ui/sidebar';
-import { Bot, Home, LineChart, Users, BookOpen } from 'lucide-react'; // Added BookOpen
+import { Bot, Home, LineChart, Users } from 'lucide-react'; // Removed BookOpen
 import React, { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation'; // Import Next.js navigation hooks
 
@@ -36,9 +36,7 @@ export default function AppSidebar() {
       setActiveItem('bill-x');
     } else if (pathname === '/performance') {
        setActiveItem('performance');
-    } else if (pathname === '/repository') { // Added repository path
-         setActiveItem('repository');
-    } else if (pathname === '/referrals') {
+    } else if (pathname === '/referrals') { // Removed repository path check
          setActiveItem('referrals');
     } else {
       // Optional: handle other paths or set a default
@@ -87,16 +85,7 @@ export default function AppSidebar() {
               <span>Bill X</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
-           <SidebarMenuItem>
-            <SidebarMenuButton
-               onClick={() => handleItemClick('repository', '/repository')} // Added Repository item
-              isActive={activeItem === 'repository'}
-              tooltip="Repository"
-            >
-              <BookOpen />
-              <span>Repository</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+           {/* Removed Repository SidebarMenuItem */}
           <SidebarMenuItem>
             <SidebarMenuButton
                onClick={() => handleItemClick('performance', '/performance')}
