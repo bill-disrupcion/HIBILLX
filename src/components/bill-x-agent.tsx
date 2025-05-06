@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react'; // Added useCallback
 import {
   Card,
   CardContent,
@@ -13,27 +13,76 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Input } from '@/components/ui/input'; // Added Input
-import { Skeleton } from '@/components/ui/skeleton'; // Added Skeleton
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { Bot, DollarSign, TrendingUp, Zap, Info, BrainCircuit, Search } from 'lucide-react'; // Added BrainCircuit, Search
+import { Bot, DollarSign, TrendingUp, Zap, Info, BrainCircuit, Search, Check } from 'lucide-react'; // Added Check
 import { useToast } from '@/hooks/use-toast';
 import { Slider } from '@/components/ui/slider';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Checkbox } from "@/components/ui/checkbox"; // Added Checkbox import
 // Import the financial knowledge flow
 import { getFinancialKnowledge, FinancialKnowledgeInput, FinancialKnowledgeOutput } from '@/ai/flows/financial-knowledge-flow';
 
+// Define strategy structure
+interface Strategy {
+  id: string;
+  title: string;
+  description: string;
+  minInvestment: number;
+  icon: React.ElementType; // Add icon component type
+}
 
-// Placeholder components or sections for strategy details
-const StrategyDetail = ({ title, description, minInvestment }) => (
+// Define available strategies
+const availableStrategies: Strategy[] = [
+  {
+    id: 'conservative',
+    title: 'Conservative Growth',
+    description: 'Focuses on stable, low-volatility assets like large-cap stocks and bonds. Aims for steady, modest returns with minimal risk. Suitable for long-term capital preservation.',
+    minInvestment: 20,
+    icon: DollarSign, // Example icon
+  },
+  {
+    id: 'balanced',
+    title: 'Balanced Approach',
+    description: 'Mixes growth stocks, dividend stocks, and bonds to balance risk and reward. Aims for moderate growth with moderate volatility. Suitable for medium to long-term goals.',
+    minInvestment: 50,
+    icon: TrendingUp, // Example icon
+  },
+  {
+    id: 'tech_focus',
+    title: 'Aggressive Tech Focus',
+    description: 'Concentrates on high-growth technology stocks and emerging tech trends. Higher potential returns come with increased volatility. Suitable for investors with high risk tolerance.',
+    minInvestment: 100,
+    icon: Zap, // Example icon
+  },
+   {
+    id: 'dividend',
+    title: 'Dividend Income',
+    description: 'Invests in established companies with a history of paying consistent dividends. Focuses on generating regular income alongside potential capital appreciation. Lower volatility than pure growth strategies.',
+    minInvestment: 30,
+    icon: DollarSign, // Example icon (replace as needed)
+  },
+   {
+    id: 'global',
+    title: 'Global Diversification',
+    description: 'Spreads investments across different countries and regions (developed and emerging markets). Reduces reliance on any single economy. Can include international stocks and bonds.',
+    minInvestment: 75,
+    icon: TrendingUp, // Example icon (replace as needed)
+  },
+];
+
+
+// Placeholder component for strategy details
+const StrategyDetail = ({ title, description, minInvestment, icon: Icon }: Strategy) => (
   <div className="p-4 border rounded-md bg-muted/50">
     <h4 className="font-semibold text-md mb-1 flex items-center">
-      <Zap className="w-4 h-4 mr-2 text-primary" /> {title}
+       {Icon && <Icon className="w-4 h-4 mr-2 text-primary" />} {title}
     </h4>
     <p className="text-sm text-muted-foreground mb-2">{description}</p>
     <p className="text-xs font-medium">
@@ -48,6 +97,8 @@ export default function BillXAgent() {
   const [automationLevel, setAutomationLevel] = useState<'strategy' | 'full'>('strategy'); // 'strategy' or 'full'
   const [selectedStrategyAmount, setSelectedStrategyAmount] = useState(20);
   const [fullAutomationAmount, setFullAutomationAmount] = useState(300); // Minimum for full automation
+  const [selectedStrategies, setSelectedStrategies] = useState<string[]>([]); // State for selected strategy IDs
+
 
   // State for AI Knowledge Hub
   const [aiQuery, setAiQuery] = useState('');
@@ -72,9 +123,20 @@ export default function BillXAgent() {
             description: "Strategy-based automation requires a minimum investment of $20 per strategy.",
             variant: "destructive",
         });
-        setIsBillXEnabled(false); // Keep it disabled
+         setIsBillXEnabled(false); // Keep it disabled
         return;
     }
+    // Validation for strategy selection when enabling strategy mode
+     if (enabled && automationLevel === 'strategy' && selectedStrategies.length === 0) {
+         toast({
+            title: "No Strategy Selected",
+            description: "Please select at least one strategy before enabling strategy-based automation.",
+            variant: "destructive",
+        });
+         setIsBillXEnabled(false); // Keep it disabled
+         return;
+     }
+
 
     setIsBillXEnabled(enabled);
     toast({
@@ -84,30 +146,42 @@ export default function BillXAgent() {
         : `AI agent is no longer managing your investments.`,
     });
     // TODO: Add API call to backend to actually enable/disable the agent
-    console.log(`Bill X ${enabled ? 'enabled' : 'disabled'}. Mode: ${automationLevel}. Amount: ${automationLevel === 'full' ? fullAutomationAmount : selectedStrategyAmount}`);
+    console.log(`Bill X ${enabled ? 'enabled' : 'disabled'}. Mode: ${automationLevel}. Amount: ${automationLevel === 'full' ? fullAutomationAmount : selectedStrategyAmount}. Selected Strategies: ${selectedStrategies.join(', ')}`);
   };
 
   const handleAutomationLevelChange = (level: 'strategy' | 'full') => {
-    if (isBillXEnabled && level === 'full' && fullAutomationAmount < 300) {
-       toast({
-            title: "Minimum Investment Required",
-            description: "Switching to full automation requires a minimum of $300. Please adjust the amount or disable Bill X first.",
-            variant: "destructive",
-        });
-        return; // Prevent switching if conditions not met while enabled
+    // Validation when switching levels while enabled
+    if (isBillXEnabled) {
+        if (level === 'full' && fullAutomationAmount < 300) {
+           toast({
+                title: "Minimum Investment Required",
+                description: "Switching to full automation requires a minimum of $300. Please adjust the amount or disable Bill X first.",
+                variant: "destructive",
+            });
+            return;
+        }
+        if (level === 'strategy' && selectedStrategyAmount < 20) {
+           toast({
+                title: "Minimum Investment Required",
+                description: "Switching to strategy automation requires a minimum of $20. Please adjust the amount or disable Bill X first.",
+                variant: "destructive",
+            });
+            return;
+        }
+        if (level === 'strategy' && selectedStrategies.length === 0) {
+             toast({
+                title: "No Strategy Selected",
+                description: "Switching to strategy mode requires at least one strategy to be selected. Please select strategies or disable Bill X first.",
+                variant: "destructive",
+            });
+             return;
+        }
     }
-      if (isBillXEnabled && level === 'strategy' && selectedStrategyAmount < 20) {
-       toast({
-            title: "Minimum Investment Required",
-            description: "Switching to strategy automation requires a minimum of $20. Please adjust the amount or disable Bill X first.",
-            variant: "destructive",
-        });
-        return; // Prevent switching if conditions not met while enabled
-    }
+
     setAutomationLevel(level);
      // If Bill X is already enabled, update the backend status immediately
     if (isBillXEnabled) {
-         console.log(`Updating Bill X mode to: ${level}. Amount: ${level === 'full' ? fullAutomationAmount : selectedStrategyAmount}`);
+         console.log(`Updating Bill X mode to: ${level}. Amount: ${level === 'full' ? fullAutomationAmount : selectedStrategyAmount}. Selected Strategies: ${selectedStrategies.join(', ')}`);
         // TODO: Add API call to update backend
          toast({
             title: "Automation Mode Updated",
@@ -115,6 +189,40 @@ export default function BillXAgent() {
         });
     }
   };
+
+   const handleStrategySelectionChange = useCallback((strategyId: string, checked: boolean) => {
+        setSelectedStrategies(prev =>
+            checked ? [...prev, strategyId] : prev.filter(id => id !== strategyId)
+        );
+        // Note: We don't update the backend here immediately, only when the "Update Selected Strategies" button is clicked.
+   }, []); // No dependencies needed
+
+   const handleUpdateStrategies = useCallback(() => {
+       if (!isBillXEnabled) {
+            toast({
+                title: "Bill X Disabled",
+                description: "Enable Bill X before updating strategies.",
+                variant: "destructive"
+            });
+            return;
+       }
+        if (selectedStrategies.length === 0) {
+             toast({
+                title: "No Strategy Selected",
+                description: "Please select at least one strategy to apply.",
+                variant: "destructive"
+            });
+            return;
+        }
+
+       console.log("Updating selected strategies:", selectedStrategies);
+       // TODO: Add API call to backend to save the selected strategies
+       toast({
+            title: "Strategies Updated",
+            description: `Bill X will now use the selected strategies: ${selectedStrategies.join(', ')}.`,
+       });
+   }, [isBillXEnabled, selectedStrategies, toast]); // Dependencies
+
 
    const handleAiQuery = async () => {
     if (!aiQuery.trim()) return;
@@ -127,7 +235,7 @@ export default function BillXAgent() {
       const output: FinancialKnowledgeOutput = await getFinancialKnowledge(input);
       setAiResponse(output.explanation);
 
-    } catch (err) {
+    } catch (err) { // Corrected catch block syntax
       console.error("AI Knowledge query failed:", err);
       setAiError(`Failed to get information. ${err instanceof Error ? err.message : 'Please try again.'}`);
     } finally {
@@ -285,56 +393,14 @@ export default function BillXAgent() {
             </CardHeader>
             <CardContent>
                  <Accordion type="single" collapsible className="w-full">
-                    <AccordionItem value="item-1">
-                        <AccordionTrigger>Conservative Growth</AccordionTrigger>
-                        <AccordionContent>
-                             <StrategyDetail
-                                title="Conservative Growth"
-                                description="Focuses on stable, low-volatility assets like large-cap stocks and bonds. Aims for steady, modest returns with minimal risk. Suitable for long-term capital preservation."
-                                minInvestment={20} // Example minimum
-                            />
-                        </AccordionContent>
-                    </AccordionItem>
-                    <AccordionItem value="item-2">
-                        <AccordionTrigger>Balanced Approach</AccordionTrigger>
-                        <AccordionContent>
-                             <StrategyDetail
-                                title="Balanced Approach"
-                                description="Mixes growth stocks, dividend stocks, and bonds to balance risk and reward. Aims for moderate growth with moderate volatility. Suitable for medium to long-term goals."
-                                minInvestment={50} // Example minimum
-                            />
-                        </AccordionContent>
-                    </AccordionItem>
-                    <AccordionItem value="item-3">
-                        <AccordionTrigger>Aggressive Tech Focus</AccordionTrigger>
-                        <AccordionContent>
-                             <StrategyDetail
-                                title="Aggressive Tech Focus"
-                                description="Concentrates on high-growth technology stocks and emerging tech trends. Higher potential returns come with increased volatility. Suitable for investors with high risk tolerance."
-                                minInvestment={100} // Example minimum
-                            />
-                        </AccordionContent>
-                    </AccordionItem>
-                     <AccordionItem value="item-4">
-                        <AccordionTrigger>Dividend Income</AccordionTrigger>
-                        <AccordionContent>
-                             <StrategyDetail
-                                title="Dividend Income"
-                                description="Invests in established companies with a history of paying consistent dividends. Focuses on generating regular income alongside potential capital appreciation. Lower volatility than pure growth strategies."
-                                minInvestment={30} // Example minimum
-                            />
-                        </AccordionContent>
-                    </AccordionItem>
-                     <AccordionItem value="item-5">
-                        <AccordionTrigger>Global Diversification</AccordionTrigger>
-                        <AccordionContent>
-                             <StrategyDetail
-                                title="Global Diversification"
-                                description="Spreads investments across different countries and regions (developed and emerging markets). Reduces reliance on any single economy. Can include international stocks and bonds."
-                                minInvestment={75} // Example minimum
-                            />
-                        </AccordionContent>
-                    </AccordionItem>
+                     {availableStrategies.map((strategy) => (
+                         <AccordionItem key={strategy.id} value={strategy.id}>
+                            <AccordionTrigger>{strategy.title}</AccordionTrigger>
+                            <AccordionContent>
+                                <StrategyDetail {...strategy} />
+                            </AccordionContent>
+                        </AccordionItem>
+                     ))}
                 </Accordion>
 
                  {/* Strategy Selection UI (if automationLevel === 'strategy') */}
@@ -344,11 +410,39 @@ export default function BillXAgent() {
                         <p className="text-sm text-muted-foreground mb-4">
                             Choose one or more strategies for Bill X to manage with the allocated amount (${selectedStrategyAmount} per strategy).
                         </p>
-                        {/* TODO: Add checkboxes or multi-select component here to choose from the strategies above */}
-                         <p className="text-sm text-muted-foreground italic">Strategy selection UI coming soon...</p>
-                        <Button className="mt-4" disabled={!isBillXEnabled}>
-                           {isBillXEnabled ? 'Update Selected Strategies' : 'Enable Bill X to Select'}
+                         {/* Checkbox group for strategy selection */}
+                        <div className="space-y-3">
+                             {availableStrategies.map((strategy) => (
+                                <div key={strategy.id} className="flex items-center space-x-3">
+                                     <Checkbox
+                                        id={`strategy-${strategy.id}`}
+                                        checked={selectedStrategies.includes(strategy.id)}
+                                        onCheckedChange={(checked) => handleStrategySelectionChange(strategy.id, !!checked)}
+                                        // Disable checkbox if BillX is enabled to prevent mid-operation changes easily
+                                        // Or allow changes and require hitting "Update"
+                                        // disabled={isBillXEnabled}
+                                        aria-labelledby={`label-strategy-${strategy.id}`}
+                                    />
+                                    <Label
+                                        htmlFor={`strategy-${strategy.id}`}
+                                        id={`label-strategy-${strategy.id}`}
+                                        className="font-normal cursor-pointer"
+                                    >
+                                        {strategy.title} <span className="text-xs text-muted-foreground">(Min: ${strategy.minInvestment})</span>
+                                    </Label>
+                                </div>
+                            ))}
+                        </div>
+
+                        <Button
+                            className="mt-4"
+                            onClick={handleUpdateStrategies}
+                            disabled={!isBillXEnabled || selectedStrategies.length === 0} // Disable if not enabled or no strategy selected
+                        >
+                           {isBillXEnabled ? <><Check className="mr-2 h-4 w-4" /> Update Selected Strategies</> : 'Enable Bill X to Select'}
                         </Button>
+                         {isBillXEnabled && <p className="text-xs text-muted-foreground mt-2">Click "Update Selected Strategies" to apply changes.</p>}
+                         {!isBillXEnabled && <p className="text-xs text-muted-foreground mt-2">Enable Bill X to apply selected strategies.</p>}
                     </div>
                 )}
             </CardContent>
