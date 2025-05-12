@@ -1,5 +1,3 @@
-
-
 // @ts-nocheck
 'use client';
 
@@ -24,7 +22,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { Bot, DollarSign, TrendingUp, Zap, Info, BrainCircuit, Search, Check, Landmark, BarChart, Scale, AlertTriangle } from 'lucide-react'; // Added Gov icons, AlertTriangle
-import { useToast } from '@/hooks/use-toast';
+// import { useToast } from '@/hooks/use-toast'; // ELIMINADO
 import { Slider } from '@/components/ui/slider';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from "@/components/ui/checkbox";
@@ -107,7 +105,7 @@ const StrategyDetail = ({ title, description, minInvestment, icon: Icon, riskPro
 );
 
 export default function BillXAgent() {
-  const { toast } = useToast();
+  // const { toast } = useToast(); // ELIMINADO
   const [isBillXEnabled, setIsBillXEnabled] = useState(false);
   const [automationLevel, setAutomationLevel] = useState<'strategy' | 'full'>('strategy');
   const [strategyAmount, setStrategyAmount] = useState(20); // Default min $20 for strategy mode
@@ -134,11 +132,11 @@ export default function BillXAgent() {
             console.warn("Agent state fetching requires backend implementation.");
         } catch (error) {
             console.error("Error fetching agent state:", error);
-            toast({ title: "Error", description: "Could not load current agent state.", variant: "destructive" });
+            // toast({ title: "Error", description: "Could not load current agent state.", variant: "destructive" }); // COMENTADO
         }
     };
     // fetchAgentState(); // Uncomment when backend is ready
-  }, [toast]);
+  }, []); // Eliminado toast de las dependencias de useEffect
 
 
   // --- Backend Update Function (Placeholder) ---
@@ -151,10 +149,10 @@ export default function BillXAgent() {
           return { success: true }; // Simulate success
       } catch (error) {
           console.error("Error updating agent state:", error);
-          toast({ title: "Update Failed", description: "Could not save agent settings to backend.", variant: "destructive" });
+          // toast({ title: "Update Failed", description: "Could not save agent settings to backend.", variant: "destructive" }); // COMENTADO
           return { success: false }; // Indicate failure
       }
-  }, [toast]);
+  }, []); // Eliminado toast de las dependencias de useCallback
 
 
   const handleToggleBillX = useCallback(async (enabled: boolean) => {
@@ -179,7 +177,8 @@ export default function BillXAgent() {
     }
 
     if (!canProceed) {
-      toast({ title: "Activation Prevented", description: validationError, variant: "destructive" });
+      // toast({ title: "Activation Prevented", description: validationError, variant: "destructive" }); // COMENTADO
+      console.warn("Activation Prevented:", validationError);
       setIsBillXEnabled(false); // Ensure it remains disabled
       return;
     }
@@ -195,16 +194,17 @@ export default function BillXAgent() {
 
      if (updateSuccess.success) {
         setIsBillXEnabled(enabled);
-        toast({
-          title: `Bill X ${enabled ? 'Enabled' : 'Disabled'}`,
-          description: enabled
-            ? `AI agent is now managing investments based on the selected mode.`
-            : `AI agent is no longer managing investments.`,
-        });
+        // toast({ // COMENTADO
+        //   title: `Bill X ${enabled ? 'Enabled' : 'Disabled'}`, 
+        //   description: enabled
+        //     ? `AI agent is now managing investments based on the selected mode.`
+        //     : `AI agent is no longer managing investments.`,
+        // });
+        console.log(`Bill X ${enabled ? 'Enabled' : 'Disabled'}. AI agent is now ${enabled ? 'managing investments based on the selected mode.' : 'no longer managing investments.'}`);
      } else {
          console.log("Reverting Bill X toggle due to backend failure.");
      }
-  }, [automationLevel, fullAutomationAmount, strategyAmount, selectedStrategies, toast, updateAgentBackendState]);
+  }, [automationLevel, fullAutomationAmount, strategyAmount, selectedStrategies, updateAgentBackendState]); // Eliminado toast de las dependencias
 
   const handleAutomationLevelChange = useCallback(async (level: 'strategy' | 'full') => {
       let canProceed = true;
@@ -227,7 +227,8 @@ export default function BillXAgent() {
       }
 
        if (!canProceed) {
-            toast({ title: "Switch Prevented", description: validationError, variant: "destructive" });
+            // toast({ title: "Switch Prevented", description: validationError, variant: "destructive" }); // COMENTADO
+            console.warn("Switch Prevented:", validationError);
             return; // Don't change level
        }
 
@@ -244,15 +245,16 @@ export default function BillXAgent() {
                  console.log("Reverting automation level change due to backend failure.");
                  return; // Revert UI change attempt
              }
-            toast({
-                title: "Automation Mode Updated",
-                description: `Bill X is now set to ${level === 'full' ? 'Full Account Automation' : 'Strategy-Based Automation'}.`,
-            });
+            // toast({ // COMENTADO
+            //     title: "Automation Mode Updated",
+            //     description: `Bill X is now set to ${level === 'full' ? 'Full Account Automation' : 'Strategy-Based Automation'}.`,
+            // });
+            console.log(`Automation Mode Updated: Bill X is now set to ${level === 'full' ? 'Full Account Automation' : 'Strategy-Based Automation'}.`);
        }
 
       setAutomationLevel(level); // Update UI state only after validation/backend success (if enabled)
 
-  }, [isBillXEnabled, fullAutomationAmount, strategyAmount, selectedStrategies, toast, updateAgentBackendState]);
+  }, [isBillXEnabled, fullAutomationAmount, strategyAmount, selectedStrategies, updateAgentBackendState]); // Eliminado toast
 
 
    const handleStrategySelectionChange = useCallback((strategyId: string, checked: boolean) => {
@@ -264,19 +266,23 @@ export default function BillXAgent() {
 
    const handleUpdateStrategies = useCallback(async () => {
        if (!isBillXEnabled) {
-            toast({ title: "Bill X Disabled", description: "Enable Bill X before applying strategies.", variant: "destructive" });
+            // toast({ title: "Bill X Disabled", description: "Enable Bill X before applying strategies.", variant: "destructive" }); // COMENTADO
+            console.warn("Bill X Disabled: Enable Bill X before applying strategies.");
             return;
        }
         if (automationLevel !== 'strategy') {
-            toast({ title: "Incorrect Mode", description: "Strategy selection only applies in 'Strategy-Based Automation' mode.", variant: "destructive"});
+            // toast({ title: "Incorrect Mode", description: "Strategy selection only applies in 'Strategy-Based Automation' mode.", variant: "destructive"}); // COMENTADO
+            console.warn("Incorrect Mode: Strategy selection only applies in 'Strategy-Based Automation' mode.");
             return;
         }
          if (strategyAmount < 20) {
-             toast({ title: "Amount Too Low", description: `Strategy-based automation requires at least $20.`, variant: "destructive"});
+             // toast({ title: "Amount Too Low", description: `Strategy-based automation requires at least $20.`, variant: "destructive"}); // COMENTADO
+             console.warn("Amount Too Low: Strategy-based automation requires at least $20.");
             return;
          }
         if (selectedStrategies.length === 0) {
-             toast({ title: "No Strategy Selected", description: "Please select at least one strategy to apply.", variant: "destructive" });
+             // toast({ title: "No Strategy Selected", description: "Please select at least one strategy to apply.", variant: "destructive" }); // COMENTADO
+             console.warn("No Strategy Selected: Please select at least one strategy to apply.");
             return;
         }
        // No longer need to validate against minInvestment here, as the entry threshold is $20
@@ -291,14 +297,15 @@ export default function BillXAgent() {
         });
 
         if (updateSuccess.success) {
-            toast({
-                 title: "Strategies Updated",
-                 description: `Bill X will now use the selected strategies: ${selectedStrategies.join(', ')}.`,
-            });
+            // toast({ // COMENTADO
+            //      title: "Strategies Updated",
+            //      description: `Bill X will now use the selected strategies: ${selectedStrategies.join(', ')}.`, 
+            // });
+            console.log(`Strategies Updated: Bill X will now use the selected strategies: ${selectedStrategies.join(', ')}.`);
         } else {
              console.log("Backend update for strategies failed.");
         }
-   }, [isBillXEnabled, selectedStrategies, toast, automationLevel, strategyAmount, updateAgentBackendState, fullAutomationAmount]);
+   }, [isBillXEnabled, selectedStrategies, automationLevel, strategyAmount, updateAgentBackendState, fullAutomationAmount]); // Eliminado toast
 
 
    const handleAiQuery = async () => {

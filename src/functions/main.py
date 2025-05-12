@@ -7,6 +7,11 @@ import pandas as pd
 from datetime import datetime, timedelta
 # Import Flask for handling HTTP requests in Cloud Functions v2/Python
 from flask import Request, jsonify
+import os # Import the os module to access environment variables
+# Import libraries for OpenAI and Mistral
+import requests # Import the requests library for making HTTP requests
+import openai
+from mistralai.client import MistralClient # Assuming you are using the official mistralai library
 import functions_framework # Required for Python Cloud Functions v2
 
 # Initialize Firebase Admin SDK if not already initialized
@@ -28,6 +33,18 @@ try:
 except Exception as e:
     print(f"Error getting Firestore client: {e}")
     db = None # Ensure db is None if initialization failed
+
+# Initialize OpenAI and Mistral clients using API keys from environment variables
+openai_api_key = os.environ.get("OPENAI_API_KEY")
+mistral_api_key = os.environ.get("MISTRAL_API_KEY")
+
+# Check if keys are available before initializing clients to avoid errors
+openai_client = openai.OpenAI(api_key=openai_api_key) if openai_api_key else None
+mistral_client = MistralClient(api_key=mistral_api_key) if mistral_api_key else None
+
+# Define the URL of your Genkit flow endpoint
+# **IMPORTANT:** Replace with the actual URL of your deployed or local Genkit endpoint
+GENKIT_FLOW_URL = os.environ.get("GENKIT_FLOW_URL", "http://localhost:3400/analyzeFinancialTextFlow") # Default to local for example
 
 def obtener_datos_accion(simbolo, periodo="1mo", intervalo="1d"):
   """
@@ -54,6 +71,64 @@ def obtener_datos_accion(simbolo, periodo="1mo", intervalo="1d"):
     print(f"Error downloading data for {simbolo} using yfinance: {e}")
     return None
 
+def get_openai_analysis(text):
+    """
+    Gets analysis from OpenAI API.
+    Replace with specific prompt and model based on your needs.
+    """
+    if not openai_client:
+        print("OpenAI client not initialized. API key not set.")
+        return {"error": "OpenAI API key not set."}
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",  # Or another suitable model
+            messages=[
+                {"role": "system", "content": "You are a financial analyst."},
+                {"role": "user", "content": f"Analyze the following financial text: {text}"}
+            ]
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Error getting analysis from OpenAI: {e}")
+        return {"error": str(e)}
+
+def get_mistral_analysis(text):
+    """
+    Gets analysis from Mistral API.
+    Replace with specific prompt and model based on your needs.
+    """
+    if not mistral_client:
+        print("Mistral client not initialized. API key not set.")
+        return {"error": "Mistral API key not set."}
+    try:
+        response = mistral_client.chat(
+            model="mistral-large-latest", # Or another suitable model
+            messages=[
+                {"role": "system", "content": "You are a financial analyst."},
+                {"role": "user", "content": f"Analyze the following financial text: {text}"}
+            ]
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Error getting analysis from Mistral: {e}")
+        return {"error": str(e)}
+
+def get_gemini_analysis_from_genkit(text):
+    """
+    Calls the Genkit flow for Gemini analysis via HTTP.
+    """
+    if not GENKIT_FLOW_URL:
+         print("GENKIT_FLOW_URL environment variable not set.")
+         return {"error": "GENKIT_FLOW_URL not set."}
+    try:
+        # Assuming your Genkit flow endpoint expects a JSON body with the input text
+        response = requests.post(GENKIT_FLOW_URL, json={"input": text})
+        response.raise_for_status() # Raise an HTTPError for bad responses (4xx or 5xx)
+        return response.json() # Assuming the flow returns JSON
+    except requests.exceptions.RequestException as e:
+        print(f"Error calling Genkit flow: {e}")
+        return {"error": str(e)}
+
 # Define the HTTP-triggered function using functions_framework
 @functions_framework.http
 def obtener_y_guardar_datos(request: Request):
@@ -68,11 +143,26 @@ def obtener_y_guardar_datos(request: Request):
     simbolo = request.args.get('symbol', default="GOOGL", type=str)
     periodo = request.args.get('period', default="6mo", type=str)
     intervalo = request.args.get('interval', default="1d", type=str)
+    financial_text = request.args.get('financial_text', default="", type=str) # Added to get text for analysis
 
     print(f"Processing request for symbol: {simbolo}, period: {periodo}, interval: {intervalo}")
 
     try:
-        data = obtener_datos_accion(simbolo, periodo, intervalo)
+        openai_analysis = None
+        mistral_analysis = None
+        gemini_analysis = None # Added for Gemini analysis
+
+        if financial_text:
+            print("Performing AI analysis on provided text...")
+            openai_analysis = get_openai_analysis(financial_text)
+            mistral_analysis = get_mistral_analysis(financial_text)
+            gemini_analysis_response = get_gemini_analysis_from_genkit(financial_text) # Call Genkit flow
+
+            if gemini_analysis_response and not "error" in gemini_analysis_response:
+                 # Assuming the Genkit flow returns the analysis text directly or within a specific key
+                 # Adjust this based on the actual response format of your Genkit flow
+                 gemini_analysis = gemini_analysis_response.get("output", gemini_analysis_response) # Try to get 'output' key, or use the whole response
+            print("AI analysis completed.")
 
         if data is not None and not data.empty:
             # Convert timestamps to Firestore Timestamps (or strings if preferred)
@@ -92,24 +182,60 @@ def obtener_y_guardar_datos(request: Request):
                 processed_data_dict[str_timestamp_key] = {k: (v if pd.notna(v) else None) for k, v in values.items()} # Handle NaN
 
             # Save data to Firestore collection 'historical_data', document ID is the symbol
+            # Save data and AI analysis to Firestore
             doc_ref = db.collection('historical_data').document(simbolo)
-            doc_ref.set({
+            update_data = {
                 'updated_at': firestore.SERVER_TIMESTAMP,
                 'symbol': simbolo,
                 'period': periodo,
                 'interval': intervalo,
                 'data': processed_data_dict # Use the processed dictionary
-            })
-            print(f"Data for {simbolo} saved successfully to Firestore.")
-            return jsonify({"message": f"Data for {simbolo} saved successfully."}), 200
+            }
+
+            if openai_analysis and not isinstance(openai_analysis, dict) and not "error" in openai_analysis:
+                 update_data['openai_analysis'] = openai_analysis
+
+            if mistral_analysis and not isinstance(mistral_analysis, dict) and not "error" in mistral_analysis:
+                 update_data['mistral_analysis'] = mistral_analysis
+
+            if gemini_analysis and not "error" in gemini_analysis:
+                 update_data['gemini_analysis'] = gemini_analysis # Added Gemini analysis
+
+            doc_ref.set(update_data) # Use set to create or overwrite the document
+
+            print(f"Data and AI analysis for {simbolo} saved successfully to Firestore.")
+            return jsonify({"message": f"Data and AI analysis for {simbolo} saved successfully."}), 200
         else:
             print(f"Could not obtain valid data for {simbolo}.")
-            return jsonify({"message": f"Could not obtain valid data for {simbolo}."}), 404
+            # Even if no historical data, maybe save the AI analysis if text was provided
+            if (openai_analysis and not isinstance(openai_analysis, dict) and not "error" in openai_analysis) or \
+               (mistral_analysis and not isinstance(mistral_analysis, dict) and not "error" in mistral_analysis) or \
+               (gemini_analysis and not "error" in gemini_analysis): # Check if any analysis was successful
+             doc_ref = db.collection('historical_data').document(simbolo + "_analysis") # Use a different document for analysis without historical data
+             update_data = {
+                'updated_at': firestore.SERVER_TIMESTAMP,
+                'symbol': simbolo,
+                'analysis_only': True
+             }
+             if openai_analysis and not isinstance(openai_analysis, dict) and not "error" in openai_analysis:
+                'symbol': simbolo,
+                'analysis_only': True
+             }
+             if openai_analysis and not isinstance(openai_analysis, dict) and not "error" in openai_analysis:
+                  update_data['openai_analysis'] = openai_analysis
+             if mistral_analysis and not isinstance(mistral_analysis, dict) and not "error" in mistral_analysis:
+                  update_data['mistral_analysis'] = mistral_analysis
+             if gemini_analysis and not "error" in gemini_analysis:
+                  update_data['gemini_analysis'] = gemini_analysis # Added Gemini analysis
+             doc_ref.set(update_data)
+             print(f"AI analysis for {simbolo} saved successfully to Firestore (no historical data).")
+             return jsonify({"message": f"AI analysis for {simbolo} saved successfully (no historical data).", "openai_analysis": openai_analysis, "mistral_analysis": mistral_analysis, "gemini_analysis": gemini_analysis}), 200 # Include Gemini analysis in response
+            else:
+                return jsonify({"message": f"Could not obtain valid data or perform analysis for {simbolo}."}), 404
     except Exception as e:
         error_message = f"Error processing or saving data for {simbolo}: {e}"
         print(error_message)
         return jsonify({"error": error_message}), 500
-
 
 # Example of how a Pub/Sub triggered function (for Cloud Scheduler) might look
 # @functions_framework.cloud_event
