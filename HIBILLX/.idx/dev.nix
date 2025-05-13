@@ -6,11 +6,11 @@
 
   # Use https://search.nixos.org/packages to find packages
   packages = [
-  # pkgs.go # Si no usas Go, puedes dejarlo comentado o quitarlo
-  pkgs.python311               # <--- DESCOMENTADO
-  pkgs.python311Packages.pip   # <--- DESCOMENTADO
-  pkgs.nodejs_20               # <--- DESCOMENTADO (lo necesitas para Next.js y Firebase Functions TS)
-  # pkgs.nodePackages.nodemon  # Descomenta si usas nodemon
+  pkgs.python311
+  pkgs.python311Packages.pip
+  pkgs.nodejs_20 
+  # Comenta pkgs.talib y pkgs.python311Packages.TA-Lib por ahora
+  # Comenta pkgs.python311Packages.pandas, numpy, tensorflow, scikitlearn, etc.
 ];
 
   # Sets environment variables in the workspace
